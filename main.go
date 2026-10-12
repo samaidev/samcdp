@@ -190,6 +190,9 @@ func onTrayReady() {
 	mQuit.Click(func() {
 		svc.Stop()
 		systray.Quit()
+		// macOS: systray.Quit() 调用 [NSApp terminate:] 但不会移除状态栏图标
+		// 也不会退出进程（如果还有其他 goroutine 在运行），所以强制退出
+		os.Exit(0)
 	})
 }
 
