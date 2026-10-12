@@ -1,0 +1,7 @@
+// cdpclient.rc — Windows resource file
+// Embeds the icon into the .exe file (shows in taskbar, file explorer, etc.)
+
+1 ICON "appicon.ico"
+
+// Manifest for DPI awareness and modern Windows compatibility
+1 24 "cdpclient.exe.manifest"
