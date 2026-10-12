@@ -23,7 +23,7 @@ Remote Chrome automation for AI agents. Expose local Chrome browsers as public H
 
 ## Quick Install
 
-### Linux
+### Linux / macOS
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/samaidev/samcdp/main/install.sh | bash
@@ -33,12 +33,6 @@ curl -fsSL https://raw.githubusercontent.com/samaidev/samcdp/main/install.sh | b
 
 ```powershell
 irm https://raw.githubusercontent.com/samaidev/samcdp/main/install.ps1 | iex
-```
-
-### macOS
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/samaidev/samcdp/main/install.sh | bash
 ```
 
 > macOS note: The system tray requires CGO. Run `CGO_ENABLED=1 go build` if building from source on macOS.
