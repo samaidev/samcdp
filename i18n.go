@@ -18,7 +18,7 @@ var i18nMap = map[string]map[Lang]string{
 	"tray.lang":         {"zh": "EN", "en": "中文"},
 	"tray.autoStart":    {"zh": "开机启动", "en": "Start at Boot"},
 	"tray.cancelAuto":   {"zh": "取消开机启动", "en": "Cancel Boot Start"},
-	"tray.cdpAddr":      {"zh": "复制全部地址", "en": "Copy All Addresses"},
+	"tray.cdpAddr":      {"zh": "复制地址", "en": "Copy URL"},
 	"tray.settings":     {"zh": "设置", "en": "Settings"},
 	"tray.quit":         {"zh": "退出", "en": "Quit"},
 

@@ -47,10 +47,10 @@ func initConfig() {
 		cfg.save()
 	}
 
-	// 如果没有 profiles，创建默认 profile
+	// 如果没有 profiles，创建默认 profile（单 Chrome 实例）
 	if len(cfg.Profiles) == 0 {
 		cfg.Profiles = []Profile{
-			{Name: "default", Port: 9333, Enabled: true},
+			{Name: "default", Port: 9334, Enabled: true},
 		}
 		cfg.save()
 	}
