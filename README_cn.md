@@ -19,13 +19,7 @@
 
 ## 截图
 
-**设置页面（英文）：**
-
-![设置页面(EN)](docs/settings-en.png)
-
-**设置页面（中文）：**
-
-![设置页面(CN)](docs/settings-zh.png)
+![设置页面](docs/settings-zh.png)
 
 ## 一键安装
 

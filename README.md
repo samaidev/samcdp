@@ -17,15 +17,9 @@ Remote Chrome automation for AI agents. Expose local Chrome browsers as public H
 - **System Tray Integration** — Native tray icon with run/stop/settings menu
 - **Cross-Platform** — Windows, Linux, and macOS
 
-## Screenshots
-
-**Settings Page (English):**
+## Screenshot
 
 ![Settings (EN)](docs/settings-en.png)
-
-**Settings Page (Chinese):**
-
-![Settings (CN)](docs/settings-zh.png)
 
 ## Quick Install
 
