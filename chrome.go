@@ -77,7 +77,7 @@ func launchChromeWithCDP(exePath string, port int, profileName string) (*exec.Cm
 		"--no-default-browser-check",
 		"--keep-alive-for-test",
 	}
-	// Linux 容器/无桌面环境需要 headless + no-sandbox
+	// Linux 容器/无桌面环境需要 headless + no-sandbox；macOS 和 Windows 不需要
 	if runtime.GOOS == "linux" {
 		if os.Getenv("DISPLAY") == "" {
 			args = append(args, "--headless=new")
@@ -117,14 +117,25 @@ func setupChromePolicyNoSandboxWarning() {
 
 // killChromeOnPort 杀掉占用指定端口的 Chrome 进程，防止窗口堆积
 func killChromeOnPort(port int) {
-	// 通过 fuser 查找占用端口的进程
-	cmd := exec.Command("fuser", fmt.Sprintf("%d/tcp", port))
-	output, err := cmd.Output()
-	if err != nil || len(output) == 0 {
-		return // 端口未被占用
+	var pids []string
+
+	if runtime.GOOS == "darwin" {
+		// macOS: 用 lsof 查找占用端口的进程
+		out, err := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port)).Output()
+		if err != nil || len(out) == 0 {
+			return // 端口未被占用
+		}
+		pids = strings.Fields(string(out))
+	} else {
+		// Linux: 用 fuser 查找占用端口的进程
+		out, err := exec.Command("fuser", fmt.Sprintf("%d/tcp", port)).Output()
+		if err != nil || len(out) == 0 {
+			return // 端口未被占用
+		}
+		// output 格式: "9334:  12345 12346"
+		pids = strings.Fields(strings.TrimPrefix(string(out), fmt.Sprintf("%d:", port)))
 	}
-	// output 格式: "9334:  12345 12346"
-	pids := strings.Fields(strings.TrimPrefix(string(output), fmt.Sprintf("%d:", port)))
+
 	for _, pidStr := range pids {
 		if pid, err := parsePid(pidStr); err == nil {
 			exec.Command("kill", "-9", fmt.Sprintf("%d", pid)).Run()
