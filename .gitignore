@@ -1,0 +1,25 @@
+# Binaries
+cdpclient
+cdpclient.exe
+cdpclient-linux-amd64
+*.exe
+*.syso
+
+# aitun client binaries
+aitun-client
+aitun-client.exe
+bin/
+
+# Build artifacts
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Config (contains secrets)
+config.json
