@@ -29,12 +29,17 @@ type Config struct {
 
 var cfg *Config
 
-func initConfig() {
+// configDir 返回 cdpclient 配置目录
+func configDir() string {
 	base := os.Getenv("APPDATA")
 	if base == "" {
 		base, _ = os.UserConfigDir()
 	}
-	dir := filepath.Join(base, "cdpclient")
+	return filepath.Join(base, "cdpclient")
+}
+
+func initConfig() {
+	dir := configDir()
 	os.MkdirAll(dir, 0755)
 	cfg = &Config{
 		filePath: filepath.Join(dir, "config.json"),

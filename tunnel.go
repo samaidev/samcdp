@@ -52,6 +52,13 @@ func (t *Tunnel) Start(localPort int, aitunKey string) error {
 
 	cmd := exec.Command(bin, args...)
 	hideCmdWindow(cmd)
+
+	// 隔离 aitun 的工作目录，避免复用 ~/.aitun/auth_token（可能与其它程序冲突）
+	aitunHome := filepath.Join(configDir(), ".aitun")
+	os.MkdirAll(aitunHome, 0700)
+	cmd.Env = append(os.Environ(), "HOME="+aitunHome)
+	debugLog(fmt.Sprintf("[tunnel] aitun HOME: %s", aitunHome))
+
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		debugLog(fmt.Sprintf("[tunnel] stdout pipe error: %v", err))
