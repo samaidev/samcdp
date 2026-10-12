@@ -51,11 +51,9 @@ var i18nMap = map[string]map[Lang]string{
 	"settings.noProfiles":   {"zh": "暂无 Profile", "en": "No Profiles"},
 	"settings.profileAdded": {"zh": "Profile 已添加", "en": "Profile added"},
 	"settings.profileDeleted": {"zh": "Profile 已删除", "en": "Profile deleted"},
-	"settings.copyAll":      {"zh": "复制全部地址", "en": "Copy All URLs"},
 
 	// 提示
 	"toast.copied":          {"zh": "已复制带Token的远程地址到剪切板", "en": "Remote address with token copied to clipboard"},
-	"toast.copiedAll":       {"zh": "已复制所有远程地址到剪切板", "en": "All remote addresses copied to clipboard"},
 	"toast.notRunning":      {"zh": "请先启动服务", "en": "Please start the service first"},
 	"toast.chromeNotFound":  {"zh": "未找到 Chrome，请安装: https://www.google.com/chrome/", "en": "Chrome not found, install: https://www.google.com/chrome/"},
 	"toast.started":         {"zh": "CDP 服务已启动", "en": "CDP service started"},
