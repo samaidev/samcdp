@@ -1,6 +1,6 @@
-# SamCDP 中文文档
+# SamCDP
 
-通过 [aitun](https://aitun.cc) 隧道，将本地 Chrome CDP（Chrome DevTools Protocol）调试端口暴露为公网 HTTPS 地址，供远程智能体调用。
+远程 Chrome 自动化工具，专为 AI 智能体设计。通过 [aitun](https://aitun.cc) 隧道将本地 Chrome 浏览器暴露为公网 HTTPS 地址，让远程智能体可以随时控制和自动化操作 Chrome。
 
 [English README](README.md)
 
@@ -8,94 +8,65 @@
 
 ## 功能特性
 
-- **多 Profile Chrome 管理** — 同时运行多个独立 Chrome 实例，各自拥有独立的 user-data-dir 和调试端口
-- **单隧道 + 路径路由** — 一条 aitun 隧道通过路径路由（`/profile-name/json/list`）转发到所有 Chrome 实例
-- **CDP 管理 API** — RESTful 接口启动/停止 Chrome、列出/打开/关闭标签页、透传原生 CDP 协议
-- **系统托盘集成** — 原生系统托盘图标，支持运行/停止/设置菜单（Windows & Linux）
+- **多 Profile Chrome 管理** — 同时运行多个独立 Chrome 实例，各自拥有独立的登录状态、Cookie 和调试端口
+- **一个公网地址管所有 Profile** — 单条隧道通过路径路由服务所有 Chrome 实例（`/agent-1/json/list`、`/agent-2/json/list` 等）
+- **RESTful 管理 API** — 通过 HTTP 启动/停止 Chrome、列出/打开/关闭标签页、透传原生 CDP 协议
+- **登录状态持久化** — Chrome user-data-dir 保留 Cookie 和 session，重启后无需重新登录
 - **自动清理** — 启动时自动杀掉残留 Chrome 进程，防止窗口堆积
 - **超时自动关闭** — 启动 Chrome 时可指定运行时长（分钟），到期自动关闭
-- **登录状态持久化** — Chrome user-data-dir 保留 Cookie/session，重启后无需重新登录
-- **跨平台** — 支持 Windows 和 Linux（amd64）
+- **系统托盘集成** — 原生托盘图标，支持运行/停止/设置菜单
+- **跨平台** — 支持 Windows、Linux 和 macOS
 
-## 架构
+## 截图
 
-```
-远程智能体
-    │
-    ▼ HTTPS
-┌───────────────────────────────┐
-│  aitun 隧道（公网 URL）       │  例：https://mos.t.aitun.cc
-└───────────┬───────────────────┘
-            │
-            ▼
-┌───────────────────────────────┐
-│  SamCDP CDP 代理（端口 9333）│  路径路由 + 管理 API
-└───┬───────────┬───────────┬───┘
-    │           │           │
-    ▼           ▼           ▼
- Chrome:9334 Chrome:9335 Chrome:9336
- (agent-1)   (agent-2)   (agent-3)
-```
+**设置页面（英文）：**
+
+![设置页面(EN)](docs/settings-en.png)
+
+**设置页面（中文）：**
+
+![设置页面(CN)](docs/settings-zh.png)
 
 ## 一键安装
 
-### Linux（bash）
+### Linux / macOS
 
 ```bash
-# 一行安装
 curl -fsSL https://raw.githubusercontent.com/samaidev/samcdp/main/install.sh | bash
 ```
-
-<details>
-<summary>手动安装（Linux）</summary>
-
-```bash
-# 下载源码并编译
-git clone https://github.com/samaidev/samcdp.git
-cd samcdp
-CGO_ENABLED=0 go build -o cdpclient .
-
-# 下载 aitun-client
-wget -O aitun-client https://aitun.cc/downloads/aitun-client-linux-amd64
-chmod +x aitun-client
-
-# 运行
-export DISPLAY=:1
-./cdpclient
-```
-</details>
 
 ### Windows（PowerShell）
 
 ```powershell
-# 一行安装
 irm https://raw.githubusercontent.com/samaidev/samcdp/main/install.ps1 | iex
 ```
 
-<details>
-<summary>手动安装（Windows）</summary>
+> macOS 注意：系统托盘需要 CGO 编译。从源码编译时请使用 `CGO_ENABLED=1 go build`。
 
-```powershell
-# 克隆并编译
-git clone https://github.com/samaidev/samcdp.git
-cd samcdp
-go build -ldflags "-H windowsgui" -o cdpclient.exe .
+## 使用方法
 
-# 运行
-.\cdpclient.exe
-```
-</details>
+### 1. 获取 aitun 密钥
 
-## 配置
+在 [aitun.cc](https://aitun.cc) 注册账号，验证邮箱后注册子域名，获取密钥（`ait_xxxx`）。
 
-首次启动时，SamCDP 会自动创建配置文件：
+### 2. 配置
+
+启动 SamCDP，系统托盘会出现图标。右键点击托盘图标，选择**设置**打开设置页面：
+
+- 填入 **aitun Key**
+- 管理 **Profile**（新增/删除/启用切换）
+- 查看你的**远程地址**和**鉴权 Token**
+
+也可以直接编辑配置文件：
+
 - **Windows:** `%APPDATA%\cdpclient\config.json`
 - **Linux:** `~/.config/cdpclient/config.json`
+- **macOS:** `~/Library/Application Support/cdpclient/config.json`
 
 ```json
 {
-  "aitun_key": "ait_你的_aitun_密钥",
-  "auth_token": "自动生成的令牌",
+  "aitun_key": "ait_你的密钥",
+  "auth_token": "自动生成",
   "lang": "zh",
   "profiles": [
     {"name": "agent-1", "port": 9334, "enabled": true},
@@ -105,50 +76,48 @@ go build -ldflags "-H windowsgui" -o cdpclient.exe .
 }
 ```
 
-### 获取 aitun 密钥
+### 3. 启动服务
 
-1. 在 [aitun.cc](https://aitun.cc) 注册账号
-2. 验证邮箱
-3. 注册子域名并获取密钥（`ait_xxxx`）
+在托盘菜单点击**运行**，或启动后自动运行。隧道地址会显示在托盘菜单中（如 `https://mos.t.aitun.cc`）。
 
-## API 参考
+### 4. 调用 API
 
-所有接口需要鉴权：通过 `?token=YOUR_TOKEN` 查询参数或 `Authorization: Bearer YOUR_TOKEN` 请求头。
+所有接口需要鉴权：通过 `?token=YOUR_TOKEN` 参数或 `Authorization: Bearer YOUR_TOKEN` 请求头。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/?token=xxx` | API 文档页面 |
 | `GET` | `/api/profiles?token=xxx` | 列出所有 profile |
-| `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动 Chrome（duration 必填，单位：分钟） |
+| `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动 Chrome（duration 必填） |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止 Chrome |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页 |
 | `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx` | 打开新标签页 |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | 关闭标签页 |
 | — | `/<profile>/json/*` | CDP 原生协议透传 |
 
-### 示例：启动 Chrome 并自动化操作
+#### 示例：启动 Chrome 并自动化操作
 
 ```bash
 # 启动 agent-1 的 Chrome（30 分钟超时）
-curl -X POST "https://你的隧道地址/api/profiles/agent-1/start?token=你的令牌&duration=30"
-
-# 列出标签页
-curl "https://你的隧道地址/api/profiles/agent-1/tabs?token=你的令牌"
+curl -X POST "https://你的地址/api/profiles/agent-1/start?token=你的Token&duration=30"
 
 # 打开 DeepSeek
-curl -X POST "https://你的隧道地址/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&token=你的令牌"
+curl -X POST "https://你的地址/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&token=你的Token"
+
+# 列出标签页
+curl "https://你的地址/api/profiles/agent-1/tabs?token=你的Token"
 
 # 通过 CDP WebSocket 连接
-wss://你的隧道地址/agent-1/json/version
+wss://你的地址/agent-1/json/version
 ```
 
-### Python 示例
+#### Python 示例
 
 ```python
 import requests
 
-BASE = "https://你的隧道地址"
-TOKEN = "你的令牌"
+BASE = "https://你的地址"
+TOKEN = "你的Token"
 
 # 启动 Chrome（30 分钟）
 requests.post(f"{BASE}/api/profiles/agent-1/start", params={"token": TOKEN, "duration": 30})
@@ -158,23 +127,29 @@ resp = requests.get(f"{BASE}/api/profiles/agent-1/tabs", params={"token": TOKEN}
 print(resp.json())
 ```
 
+## 下载预编译二进制
+
+从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载：
+
+| 平台 | 文件 |
+|------|------|
+| Windows | `cdpclient-windows-amd64.exe` + `aitun-client-windows-amd64.exe` |
+| Linux | `cdpclient-linux-amd64` + `aitun-client-linux-amd64` |
+| macOS | `cdpclient-darwin-amd64` + `aitun-client-darwin-amd64` |
+
+将 `aitun-client` 放到 `cdpclient` 同目录下，然后运行 `cdpclient` 即可。
+
 ## 从源码编译
 
-### 前置条件
-
-- [Go](https://go.dev/dl/) 1.23+
-
-### 编译
-
 ```bash
-# Windows（GUI 应用，无控制台窗口）
+# Windows
 go build -ldflags "-H windowsgui" -o cdpclient.exe .
 
 # Linux
 CGO_ENABLED=0 go build -o cdpclient .
 
-# Windows 交叉编译 Linux
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o cdpclient-linux-amd64 .
+# macOS（系统托盘需要 CGO）
+CGO_ENABLED=1 go build -o cdpclient .
 ```
 
 ## 许可证
