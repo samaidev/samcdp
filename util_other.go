@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 )
 
@@ -35,6 +37,11 @@ func winRegQueryString(keyPath, valueName string) string {
 
 func winToast(msg string) {
 	fmt.Println("[Toast]", msg)
+	// macOS: 用 osascript 显示通知
+	if runtime.GOOS == "darwin" {
+		escaped := strings.ReplaceAll(msg, `"`, `\"`)
+		execCmd("osascript", "-e", `display notification "`+escaped+`" with title "CDP Client"`)
+	}
 }
 
 func execPowerShell(script string) {}

@@ -28,7 +28,17 @@ func winCopyClipboard(text string) error {
 }
 
 func macCopyClipboard(text string) error {
-	return execCommandStdin("pbcopy", text)
+	// 优先用 pbcopy
+	err := execCommandStdin("pbcopy", text)
+	if err != nil {
+		debugLog(fmt.Sprintf("[clipboard] pbcopy failed: %v, trying osascript", err))
+		// 备选方案：用 osascript
+		escaped := strings.ReplaceAll(text, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+		return execCommand("osascript", "-e", `set the clipboard to "`+escaped+`"`)
+	}
+	debugLog("[clipboard] pbcopy OK")
+	return nil
 }
 
 func linuxCopyClipboard(text string) error {
@@ -39,7 +49,7 @@ func escapeSingleQuote(s string) string {
 	out := ""
 	for _, c := range s {
 		if c == '\'' {
-			out += "''"  // PowerShell 转义
+			out += "''" // PowerShell 转义
 		} else {
 			out += string(c)
 		}
