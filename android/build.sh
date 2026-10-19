@@ -12,7 +12,7 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.0.1-debug.apk"
+APK_OUT="$OUT/SamCDP-android-v1.0.2-debug.apk"
 
 rm -rf "$OUT" gen
 mkdir -p "$OUT" gen classes "$OUT/dex"
@@ -44,10 +44,10 @@ echo "[5/6] zipalign"
 "$BT/zipalign" -f 4 "$APK_UNALIGNED" "$APK_ALIGNED"
 
 echo "[6/6] sign"
-KS="$OUT/debug.keystore"
+KS="$SDK_DIR/samcdp-debug.keystore"   # persistent debug keystore (stable signatures across builds)
 if [ ! -f "$KS" ]; then
   keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias androiddebugkey \
-    -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000 >/dev/null 2>&1
+    -dname "CN=Android Debug,O=SamCDP,C=US" -keyalg RSA -keysize 2048 -validity 10000 >/dev/null 2>&1
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --min-sdk-version 26 --out "$APK_OUT" "$APK_ALIGNED"

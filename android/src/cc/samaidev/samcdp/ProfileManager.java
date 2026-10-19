@@ -176,6 +176,11 @@ public class ProfileManager {
 
     @SuppressLint("SetJavaScriptEnabled")
     public static TabItem openTab(Profile profile, String url) throws Exception {
+        return openTab(profile, url, null);
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    public static TabItem openTab(Profile profile, String url, String customUa) throws Exception {
         if (!profile.running) throw new Exception("profile not running (POST /api/profiles/" + profile.name + "/start first)");
         String finalId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         List<TabItem> tabs = tabsOf(profile);
@@ -194,7 +199,21 @@ public class ProfileManager {
                 CookieManager cm = CookieManager.getInstance();
                 cm.setAcceptCookie(true);
                 cm.setAcceptThirdPartyCookies(wv, true);
+                if (customUa != null && !customUa.isEmpty()) {
+                    st.setUserAgentString(customUa);
+                } else {
+                    // desktop-like UA: far better compatibility for AI-driven automation
+                    st.setUserAgentString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+                            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
+                }
                 wv.setWebViewClient(new WebViewClient() {
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView view, String u) {
+                        // block deep-link / intent:// hijacks (e.g. baiduboxapp://)
+                        return u != null && !u.startsWith("http://") && !u.startsWith("https://")
+                                && !u.startsWith("file://") && !u.startsWith("about:")
+                                && !u.startsWith("data:");
+                    }
                     @Override
                     public void onPageFinished(WebView view, String u) {
                         t.title = view.getTitle() == null ? "" : view.getTitle();

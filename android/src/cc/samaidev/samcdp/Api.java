@@ -165,7 +165,7 @@ public class Api extends HttpServer {
                 if (url == null || url.isEmpty()) return err(400, "url query param required");
                 if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")
                         && !url.startsWith("about:")) url = "https://" + url;
-                TabItem t = ProfileManager.openTab(p, url);
+                TabItem t = ProfileManager.openTab(p, url, req.query.get("ua"));
                 JSONObject o = ok();
                 o.put("tab", tabJson(p, t));
                 return json(o);
