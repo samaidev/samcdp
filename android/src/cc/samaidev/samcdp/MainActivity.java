@@ -80,9 +80,12 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 return;
             }
             String s = remoteUrl.getText().toString();
+            // 复制即带 token，拿去就能直接调 API（与桌面设置页 copyRemoteUrl 行为一致）
+            String token = tokenInput.getText().toString().trim();
+            String full = token.isEmpty() ? s : s + "?token=" + token;
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(ClipData.newPlainText("url", s));
-            Toast.makeText(this, "已复制 " + s, Toast.LENGTH_SHORT).show();
+            cm.setPrimaryClip(ClipData.newPlainText("url", full));
+            Toast.makeText(this, "已复制 " + full, Toast.LENGTH_SHORT).show();
         });
 
         btnTunnel.setOnClickListener(v -> toggleTunnel());
