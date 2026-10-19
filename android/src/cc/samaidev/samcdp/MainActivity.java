@@ -2,17 +2,24 @@ package cc.samaidev.samcdp;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -20,11 +27,13 @@ import java.util.List;
 
 public class MainActivity extends Activity implements ProfileManager.LogSink {
 
+    private TextView remoteUrl, tunnelStatus, statusText, logView;
     private View dot;
-    private TextView status, url, token, logView;
-    private Button btnToggle;
+    private EditText aitunKeyInput, tokenInput;
     private LinearLayout profilesBox;
+    private Button btnTunnel;
     private final Handler ui = new Handler(Looper.getMainLooper());
+    private final StringBuilder logBuf = new StringBuilder();
     private final Runnable refresher = new Runnable() {
         @Override
         public void run() {
@@ -32,30 +41,74 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             ui.postDelayed(this, 1000);
         }
     };
-    private final StringBuilder logBuf = new StringBuilder();
+    private int renderedProfileCount = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        remoteUrl = findViewById(R.id.remote_url);
+        tunnelStatus = findViewById(R.id.tunnel_status);
+        statusText = findViewById(R.id.status);
         dot = findViewById(R.id.dot);
-        status = findViewById(R.id.status);
-        url = findViewById(R.id.url);
-        token = findViewById(R.id.token);
-        btnToggle = findViewById(R.id.btn_toggle);
-        logView = findViewById(R.id.log);
+        aitunKeyInput = findViewById(R.id.aitun_key);
+        tokenInput = findViewById(R.id.token_input);
         profilesBox = findViewById(R.id.profiles);
-        try {
-            ((TextView) findViewById(R.id.version)).setText(
-                    "v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
-        } catch (Exception e) {
-            ((TextView) findViewById(R.id.version)).setText("v1.0.2");
-        }
+        logView = findViewById(R.id.log);
+        btnTunnel = findViewById(R.id.btn_tunnel);
 
         ProfileManager.setLogSink(this);
+        TunnelManager.setListener(this::uiPostRender);
 
-        btnToggle.setOnClickListener(v -> toggleService());
+        Prefs p = new Prefs(this);
+        aitunKeyInput.setText(p.aitunKey());
+        tokenInput.setText(p.token());
+        if (p.tunnelMode().equals("subdomain")) {
+            ((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).setChecked(true);
+        } else {
+            ((android.widget.RadioButton) findViewById(R.id.mode_temp)).setChecked(true);
+        }
+
+        findViewById(R.id.btn_copy).setOnClickListener(v -> {
+            String s = remoteUrl.getText().toString();
+            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("url", s));
+            Toast.makeText(this, "已复制 " + s, Toast.LENGTH_SHORT).show();
+        });
+
+        btnTunnel.setOnClickListener(v -> toggleTunnel());
+
+        findViewById(R.id.btn_battery).setOnClickListener(v -> requestBatteryOptimizationExemption());
+
+        findViewById(R.id.btn_add_profile).setOnClickListener(v -> {
+            List<Profile> list = ProfileManager.profiles();
+            if (list.size() >= ProfileManager.MAX_PROFILES) {
+                Toast.makeText(this, "最多 " + ProfileManager.MAX_PROFILES + " 个 Profile（独立进程隔离）",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            int n = list.size() + 1;
+            String name = "agent-" + n;
+            while (ProfileManager.find(name) != null) {
+                n++;
+                name = "agent-" + n;
+            }
+            Profile np = new Profile(name, 9334 + ProfileManager.profiles().size(), true);
+            ProfileManager.profiles().add(np);
+            ProfileManager.saveProfiles();
+            ProfileManager.dispatchLog("[config] profile added: " + name + " (port " + np.port + ")");
+            renderedProfileCount = -1;
+            render();
+        });
+
+        findViewById(R.id.btn_regen).setOnClickListener(v -> {
+            String t = Prefs.randomToken();
+            tokenInput.setText(t);
+            Toast.makeText(this, "已重新生成，保存设置后生效", Toast.LENGTH_SHORT).show();
+        });
+
+        findViewById(R.id.btn_save).setOnClickListener(v -> saveSettings());
 
         if (Build.VERSION.SDK_INT >= 33
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
@@ -63,22 +116,103 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 1);
         }
 
-        // Auto-run service on launch (desktop parity: SamCDP auto-starts on launch)
-        if (!CdpService.isRunning()) toggleService();
+        // desktop parity: auto-run on launch
+        if (!CdpService.isRunning()) {
+            toggleService();
+        }
+    }
+
+    private void uiPostRender() {
+        ui.post(this::render);
     }
 
     private void toggleService() {
         if (CdpService.isRunning()) {
             Intent i = new Intent(this, CdpService.class).setAction(CdpService.ACTION_STOP);
             startService(i);
-            Toast.makeText(this, "SamCDP stopped", Toast.LENGTH_SHORT).show();
         } else {
             Intent i = new Intent(this, CdpService.class).setAction(CdpService.ACTION_RUN);
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(i);
             else startService(i);
-            Toast.makeText(this, "SamCDP running", Toast.LENGTH_SHORT).show();
         }
-        ui.postDelayed(this::render, 300);
+        ui.postDelayed(this::render, 400);
+    }
+
+    private void toggleTunnel() {
+        Prefs p = new Prefs(this);
+        // persist chosen key/mode first
+        p.setAitunKey(aitunKeyInput.getText().toString().trim());
+        p.setTunnelMode(((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).isChecked()
+                ? "subdomain" : "temp");
+        if (TunnelManager.state() == TunnelManager.State.ONLINE
+                || TunnelManager.state() == TunnelManager.State.CONNECTING) {
+            TunnelManager.stop();
+            ProfileManager.dispatchLog("[aitun] stopped by user");
+        } else {
+            if (!CdpService.isRunning()) {
+                toggleService();
+            }
+            boolean subdomain = p.tunnelMode().equals("subdomain");
+            if (subdomain && p.aitunKey().isEmpty()) {
+                Toast.makeText(this, "子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
+                return;
+            }
+            TunnelManager.start(getApplicationContext(), p.tunnelMode(), p.aitunKey(), CdpService.api().port());
+        }
+        ui.postDelayed(this::render, 500);
+    }
+
+    /** samdocker-style battery optimization button. */
+    private void requestBatteryOptimizationExemption() {
+        try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            String pkg = getPackageName();
+            if (pm.isIgnoringBatteryOptimizations(pkg)) {
+                startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+                Toast.makeText(this, "已忽略电池优化，可在系统设置中撤回", Toast.LENGTH_SHORT).show();
+            } else {
+                @SuppressWarnings("BatteryLife")
+                Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + pkg));
+                startActivity(i);
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "无法打开电池优化设置: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void saveSettings() {
+        Prefs p = new Prefs(this);
+        String oldToken = p.token();
+        String newToken = tokenInput.getText().toString().trim();
+        boolean tunnelWasUp = TunnelManager.state() == TunnelManager.State.ONLINE;
+        String tunnelMode = ((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).isChecked()
+                ? "subdomain" : "temp";
+        String key = aitunKeyInput.getText().toString().trim();
+
+        p.setAitunKey(key);
+        p.setTunnelMode(tunnelMode);
+        if (!newToken.isEmpty() && !newToken.equals(oldToken)) {
+            p.setToken(newToken);
+        }
+        ProfileManager.saveProfiles();
+        Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
+
+        // restart server to apply token; restart tunnel if it was online
+        boolean wasRunning = CdpService.isRunning();
+        if (wasRunning) {
+            TunnelManager.stop();
+            Intent stop = new Intent(this, CdpService.class).setAction(CdpService.ACTION_STOP);
+            startService(stop);
+        }
+        Intent run = new Intent(this, CdpService.class).setAction(CdpService.ACTION_RUN);
+        if (Build.VERSION.SDK_INT >= 26) startForegroundService(run);
+        else startService(run);
+        if (tunnelWasUp) {
+            ui.postDelayed(() -> TunnelManager.start(getApplicationContext(), tunnelMode, key,
+                    new Prefs(this).port()), 2500);
+        }
+        ui.postDelayed(this::render, 600);
     }
 
     @Override
@@ -98,7 +232,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
     public void onLog(String line) {
         synchronized (logBuf) {
             logBuf.append(line).append('\n');
-            if (logBuf.length() > 20000) logBuf.delete(0, logBuf.length() - 10000);
+            if (logBuf.length() > 16000) logBuf.delete(0, logBuf.length() - 8000);
         }
         ui.post(() -> {
             synchronized (logBuf) {
@@ -108,80 +242,127 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
     }
 
     private void render() {
-        boolean running = CdpService.isRunning();
-        dot.setBackgroundResource(running ? R.drawable.dot_green : R.drawable.dot_red);
-        status.setText(running ? "Running" : "Stopped");
-        status.setTextColor(getColor(running ? R.color.accent : R.color.text_dim));
         Prefs p = new Prefs(this);
-        url.setText(running ? "http://" + CdpService.localIp() + ":" + CdpService.api().port()
-                : "http://—:" + p.port());
-        token.setText("token: " + p.token() + "   (tap text to copy)");
-        btnToggle.setText(running ? "Stop" : "Run");
-        btnToggle.setBackgroundTintList(getColorStateList(running ? R.color.danger : R.color.accent));
-        renderProfiles(running);
+        boolean running = CdpService.isRunning();
+        String lan = running ? "http://" + CdpService.localIp() + ":" + CdpService.api().port()
+                : "http://" + CdpService.detectIp() + ":" + p.port();
+        String remote = TunnelManager.state() == TunnelManager.State.ONLINE ? TunnelManager.url() : lan;
+        remoteUrl.setText(remote);
+
+        // status card
+        List<Profile> list = ProfileManager.profiles();
+        int runningCount = 0;
+        for (Profile pr : list) if (pr.running) runningCount++;
+        boolean up = running && (runningCount > 0 || TunnelManager.state() == TunnelManager.State.ONLINE);
+        dot.setBackgroundResource(up ? R.drawable.dot_green : R.drawable.dot_red);
+        statusText.setText(up ? "运行中（" + Math.max(runningCount, 0) + " profiles）" : "已停止");
+        statusText.setTextColor(getColor(up ? R.color.status_green : R.color.text_dim));
+
+        // tunnel line
+        TunnelManager.State ts = TunnelManager.state();
+        if (ts == TunnelManager.State.ONLINE) {
+            tunnelStatus.setText("● 隧道在线: " + TunnelManager.url()
+                    + ("subdomain".equals(TunnelManager.mode()) ? "（子域名）" : "（临时代理）"));
+            tunnelStatus.setTextColor(getColor(R.color.status_green));
+            btnTunnel.setText("停止隧道");
+        } else if (ts == TunnelManager.State.CONNECTING) {
+            tunnelStatus.setText("● 隧道连接中…");
+            tunnelStatus.setTextColor(getColor(R.color.dot_orange));
+            btnTunnel.setText("停止隧道");
+        } else if (ts == TunnelManager.State.ERROR) {
+            tunnelStatus.setText("● 隧道错误: " + TunnelManager.lastError());
+            tunnelStatus.setTextColor(getColor(R.color.danger));
+            btnTunnel.setText("启动隧道");
+        } else {
+            tunnelStatus.setText("隧道未启动（局域网: " + lan + "）");
+            tunnelStatus.setTextColor(getColor(R.color.text_dim));
+            btnTunnel.setText("启动隧道");
+        }
+
+        renderProfiles(list);
     }
 
-    private void renderProfiles(boolean running) {
-        List<Profile> list = ProfileManager.profiles();
-        if (list.isEmpty()) return;
-        if (profilesBox.getChildCount() == list.size()) {
-            for (int i = 0; i < list.size(); i++) {
-                Profile p = list.get(i);
-                LinearLayout row = (LinearLayout) profilesBox.getChildAt(i);
-                TextView info = (TextView) row.getChildAt(0);
-                Button btn = (Button) row.getChildAt(1);
-                String state = p.running
-                        ? "running · " + ProfileManager.tabs(p).size() + " tabs"
-                        + (p.autoStopAtMs > 0 ? " · " + Math.max(0, (p.autoStopAtMs - System.currentTimeMillis()) / 60000) + "m left" : "")
-                        : (p.enabled ? "idle" : "disabled");
-                info.setText(p.name + "\n" + state);
-                btn.setText(p.running ? "Stop" : "Start");
-                btn.setBackgroundTintList(getColorStateList(p.running ? R.color.danger : R.color.accent));
-            }
-            return;
+    private void renderProfiles(List<Profile> list) {
+        if (renderedProfileCount != list.size()) {
+            profilesBox.removeAllViews();
+            for (int i = 0; i < list.size(); i++) profilesBox.addView(buildProfileRow(list, i));
+            renderedProfileCount = list.size();
         }
-        profilesBox.removeAllViews();
-        Prefs prefs = new Prefs(this);
-        for (Profile p : list) {
-            LinearLayout row = new LinearLayout(this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackgroundResource(R.drawable.card_bg);
-            row.setPadding(36, 28, 36, 28);
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-            lp.bottomMargin = 16;
-            row.setLayoutParams(lp);
-
-            TextView info = new TextView(this);
-            info.setTextColor(getColor(R.color.text));
-            info.setTextSize(13);
-            info.setTypeface(android.graphics.Typeface.MONOSPACE);
-            LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0,
-                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
-            info.setLayoutParams(ilp);
-            row.addView(info);
-
-            Button btn = new Button(this);
-            btn.setTextSize(12);
-            btn.setTypeface(android.graphics.Typeface.MONOSPACE);
-            btn.setTextColor(getColor(R.color.bg));
-            btn.setBackgroundTintList(getColorStateList(R.color.accent));
-            btn.setPadding(30, 12, 30, 12);
-            btn.setOnClickListener(v -> {
+        for (int i = 0; i < profilesBox.getChildCount() && i < list.size(); i++) {
+            Profile pr = list.get(i);
+            LinearLayout row = (LinearLayout) profilesBox.getChildAt(i);
+            TextView info = (TextView) row.getChildAt(0);
+            Button del = (Button) row.getChildAt(1);
+            Switch sw = (Switch) row.getChildAt(2);
+            String state;
+            if (pr.running) {
+                String extra = pr.autoStopAtMs > 0
+                        ? " · " + Math.max(0, (pr.autoStopAtMs - System.currentTimeMillis()) / 60000) + "m"
+                        : "";
+                state = "● 运行中 · runner #" + pr.slot + extra;
+            } else {
+                state = pr.enabled ? "○ 空闲" : "○ 已禁用";
+            }
+            info.setText(pr.name + "\nPort: " + pr.port + "\n" + state);
+            info.setTextColor(getColor(pr.running ? R.color.heading : R.color.text));
+            sw.setOnCheckedChangeListener(null);
+            sw.setChecked(pr.running);
+            sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                Prefs prefs = new Prefs(this);
                 try {
-                    if (p.running) {
-                        ProfileManager.stop(p);
+                    if (isChecked) {
+                        ProfileManager.start(getApplicationContext(), pr, 0);
                     } else {
-                        ProfileManager.start(getApplicationContext(), prefs, p, 30);
+                        ProfileManager.stop(getApplicationContext(), pr);
                     }
                 } catch (Exception e) {
                     Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+                    ui.postDelayed(this::render, 300);
                 }
-                render();
+                ui.postDelayed(this::render, 700);
             });
-            row.addView(btn);
-            profilesBox.addView(row);
         }
+    }
+
+    private LinearLayout buildProfileRow(List<Profile> list, int index) {
+        Profile pr = list.get(index);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setBackgroundResource(R.drawable.card_bg);
+        row.setPadding(36, 30, 30, 30);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.bottomMargin = 18;
+        row.setLayoutParams(lp);
+
+        TextView info = new TextView(this);
+        info.setTextSize(13);
+        info.setTextColor(getColor(R.color.text));
+        LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        info.setLayoutParams(ilp);
+        row.addView(info);
+
+        Button del = new Button(this);
+        del.setText("删除");
+        del.setTextSize(12);
+        del.setTextColor(getColor(R.color.danger));
+        del.setBackground(getDrawable(R.drawable.btn_delete));
+        del.setPadding(26, 10, 26, 10);
+        del.setOnClickListener(v -> {
+            ProfileManager.stop(getApplicationContext(), pr);
+            ProfileManager.profiles().remove(pr);
+            ProfileManager.saveProfiles();
+            renderedProfileCount = -1;
+            render();
+        });
+        row.addView(del);
+
+        Switch sw = new Switch(this);
+        sw.setPadding(20, 0, 0, 0);
+        sw.setOnCheckedChangeListener((CompoundButton b, boolean c) -> { });
+        row.addView(sw);
+        return row;
     }
 }

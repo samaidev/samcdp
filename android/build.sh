@@ -12,7 +12,7 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.0.2-debug.apk"
+APK_OUT="$OUT/SamCDP-android-v1.1.0-debug.apk"
 
 rm -rf "$OUT" gen
 mkdir -p "$OUT" gen classes "$OUT/dex"
@@ -37,8 +37,17 @@ echo "[3/6] d8 dex"
 "$BT/d8" --release --min-api 26 --lib "$PLAT/android.jar" \
   --output "$OUT/dex" $(find classes -name "*.class")
 
-echo "[4/6] package dex"
-cd "$OUT/dex" && zip -q -u ../"$(basename "$APK_UNALIGNED")" classes.dex && cd ../..
+echo "[4/6] package dex + native tunnel client"
+if [ -f "$APK_UNALIGNED" ]; then
+  # strip aapt2-added empty dirs not needed; add classes.dex
+  (cd "$OUT/dex" && zip -q -u ../"$(basename "$APK_UNALIGNED")" classes.dex)
+  # bundle aitun tunnel client as native lib (same pattern as samdocker)
+  if [ -d jniLibs ]; then
+    mkdir -p "$OUT/pkg/lib"
+    cp -r jniLibs/* "$OUT/pkg/lib/"
+    (cd "$OUT/pkg" && zip -q -r "../$(basename "$APK_UNALIGNED")" lib)
+  fi
+fi
 
 echo "[5/6] zipalign"
 "$BT/zipalign" -f 4 "$APK_UNALIGNED" "$APK_ALIGNED"

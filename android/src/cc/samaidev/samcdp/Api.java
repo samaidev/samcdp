@@ -1,27 +1,23 @@
 package cc.samaidev.samcdp;
 
-import android.text.format.DateFormat;
-
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.security.MessageDigest;
-import java.util.List;
 
 /**
- * REST API surface — 1:1 mirror of desktop SamCDP endpoints:
- *   GET  /?token=                                 API docs page
- *   GET  /api/health?token=                       health probe
- *   GET  /api/status?token=                       server status
- *   GET  /api/profiles?token=                     list profiles
- *   POST /api/profiles/<name>/start?token=&duration=MIN
- *   POST /api/profiles/<name>/stop?token=
- *   GET  /api/profiles/<name>/tabs?token=
- *   POST /api/profiles/<name>/tabs/new?url=URL&token=
- *   DELETE /api/profiles/<name>/tabs/<id>?token=
- *   GET  /api/profiles/<name>/tabs/<id>/screenshot?token=
- *   POST /api/profiles/<name>/tabs/<id>/eval?token=   body {"js":"..."}
- *   GET  /<profile>/json/version|list?token=      CDP-style passthrough
+ * REST API surface — desktop-compatible + Android extras:
+ *   GET  /                                        API docs page
+ *   GET  /api/health /api/status                  health & status (incl. tunnel)
+ *   GET  /api/tunnel                              tunnel state
+ *   POST /api/tunnel/start?mode=temp|subdomain&key=ait_xxx
+ *   POST /api/tunnel/stop
+ *   GET  /api/profiles
+ *   POST /api/profiles/<name>/start?duration=MIN | /stop
+ *   GET|POST /api/profiles/<name>/tabs | /tabs/new?url=&ua=
+ *   DELETE /api/profiles/<name>/tabs/<id>
+ *   GET|POST /api/profiles/<name>/tabs/<id>/screenshot | /eval
+ *   GET  /<profile>/json/version|list             CDP-style passthrough
  */
 public class Api extends HttpServer {
 
@@ -31,6 +27,10 @@ public class Api extends HttpServer {
     public Api(int port, String token) {
         super(port);
         this.token = token;
+    }
+
+    private static Response json(int status, JSONObject o) {
+        return Response.json(status, o.toString());
     }
 
     private static JSONObject ok() {
@@ -49,11 +49,7 @@ public class Api extends HttpServer {
             o.put("error", msg);
         } catch (Exception ignored) {
         }
-        return new Response(status, "application/json; charset=utf-8", o.toString().getBytes());
-    }
-
-    private static Response json(JSONObject o) {
-        return Response.json(200, o.toString());
+        return json(status, o);
     }
 
     private boolean authed(Request req) {
@@ -73,12 +69,9 @@ public class Api extends HttpServer {
         String[] seg = path.split("/");
 
         if (!authed(req)) {
-            ProfileManager.log("401 " + req.method + " " + path + " (from " +
-                    req.header("host") + ")");
             return err(401, "unauthorized: missing or invalid token (?token= or Authorization: Bearer)");
         }
 
-        // ---- docs / health / status
         if (path.isEmpty() || path.equals("/")) {
             if (req.method.equals("GET")) return Response.html(200, docsPage());
             return err(405, "method not allowed");
@@ -86,45 +79,83 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.0.0");
+            o.put("version", "1.1.0");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
-            return json(o);
+            return json(200, o);
         }
 
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "SamCDP-Android");
-            o.put("version", "1.0.0");
+            o.put("version", "1.1.0");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
-            o.put("url", "http://" + CdpService.localIp() + ":" + port());
-            o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
-            o.put("profiles", ProfileManager.profiles().size());
-            JSONArray running = new JSONArray();
-            for (Profile p : ProfileManager.profiles()) {
-                if (p.running) running.put(p.name);
+            o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
+            JSONObject t = new JSONObject(TunnelManager.statusJson());
+            if (TunnelManager.state() == TunnelManager.State.ONLINE) {
+                o.put("remote_url", t.optString("url"));
+            } else {
+                o.put("remote_url", "http://" + CdpService.localIp() + ":" + port());
             }
+            o.put("tunnel", t);
+            o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
+            JSONArray running = new JSONArray();
+            int n = 0;
+            for (Profile p : ProfileManager.profiles()) {
+                if (p.running) {
+                    running.put(p.name);
+                    n++;
+                }
+            }
+            o.put("profiles", ProfileManager.profiles().size());
             o.put("running_profiles", running);
-            return json(o);
+            o.put("running_count", n);
+            return json(200, o);
+        }
+
+        if (path.equals("/api/tunnel")) {
+            return json(200, new JSONObject(TunnelManager.statusJson()));
+        }
+
+        if (path.equals("/api/tunnel/start") && req.method.equals("POST")) {
+            String mode = req.query.getOrDefault("mode", "temp");
+            String key = req.query.getOrDefault("key", "");
+            if ("subdomain".equals(mode) && (key == null || key.isEmpty())) {
+                return err(400, "subdomain mode requires key (ait_xxx)");
+            }
+            TunnelManager.start(CdpService.appContext(), mode, key, port());
+            return json(200, new JSONObject(TunnelManager.statusJson()));
+        }
+
+        if (path.equals("/api/tunnel/stop") && req.method.equals("POST")) {
+            TunnelManager.stop();
+            return json(200, new JSONObject(TunnelManager.statusJson()));
         }
 
         if (path.equals("/api/profiles") && req.method.equals("GET")) {
             JSONObject o = ok();
             JSONArray arr = new JSONArray();
             for (Profile p : ProfileManager.profiles()) {
-                arr.put(p.toJson(ProfileManager.tabs(p).size()));
+                int tabs = 0;
+                if (p.running) {
+                    ProfileManager.ProxyResult r = ProfileManager.tabs(p);
+                    try {
+                        tabs = new JSONObject(new String(r.payload)).optJSONArray("tabs") == null
+                                ? 0 : new JSONObject(new String(r.payload)).optJSONArray("tabs").length();
+                    } catch (Exception ignored) {
+                    }
+                }
+                arr.put(p.toJson(tabs));
             }
             o.put("profiles", arr);
-            return json(o);
+            return json(200, o);
         }
 
-        // ---- /api/profiles/<name>/...
         if (seg.length >= 3 && seg[1].equals("api") && seg[2].equals("profiles")) {
-            String name = urlSegment(seg, 3);
+            String name = Api.urlSegment(seg, 3);
             Profile p = name == null ? null : ProfileManager.find(name);
             if (p == null) return err(404, "profile not found: " + name);
 
-            // /api/profiles/<name>/start|stop
             if (seg.length == 5 && seg[4].equals("start") && req.method.equals("POST")) {
                 int duration = 30;
                 try {
@@ -133,31 +164,25 @@ public class Api extends HttpServer {
                 }
                 if (duration <= 0) return err(400, "duration (minutes) is required, e.g. ?duration=30");
                 try {
-                    ProfileManager.start(CdpService.appContext(), null, p, duration);
+                    ProfileManager.start(CdpService.appContext(), p, duration);
                 } catch (Exception e) {
                     return err(409, e.getMessage());
                 }
                 JSONObject o = ok();
                 o.put("profile", p.name);
                 o.put("duration_minutes", duration);
-                o.put("auto_stop_in_s", p.autoStopAtMs > 0 ? Math.max(0, (p.autoStopAtMs - System.currentTimeMillis()) / 1000) : 0);
-                return json(o);
+                o.put("auto_stop_in_s", p.autoStopAtMs > 0
+                        ? Math.max(0, (p.autoStopAtMs - System.currentTimeMillis()) / 1000) : 0);
+                return json(200, o);
             }
 
             if (seg.length == 5 && seg[4].equals("stop") && req.method.equals("POST")) {
-                ProfileManager.stop(p);
-                return json(ok());
+                ProfileManager.stop(CdpService.appContext(), p);
+                return json(200, ok());
             }
 
-            // /api/profiles/<name>/tabs
             if (seg.length == 5 && seg[4].equals("tabs") && req.method.equals("GET")) {
-                JSONObject o = ok();
-                JSONArray arr = new JSONArray();
-                for (TabItem t : ProfileManager.tabs(p)) {
-                    arr.put(tabJson(p, t));
-                }
-                o.put("tabs", arr);
-                return json(o);
+                return toResp(ProfileManager.tabs(p));
             }
 
             if (seg.length == 6 && seg[4].equals("tabs") && seg[5].equals("new") && req.method.equals("POST")) {
@@ -165,67 +190,74 @@ public class Api extends HttpServer {
                 if (url == null || url.isEmpty()) return err(400, "url query param required");
                 if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")
                         && !url.startsWith("about:")) url = "https://" + url;
-                TabItem t = ProfileManager.openTab(p, url, req.query.get("ua"));
-                JSONObject o = ok();
-                o.put("tab", tabJson(p, t));
-                return json(o);
+                return toResp(ProfileManager.openTab(p, url, req.query.get("ua")));
             }
 
-            // /api/profiles/<name>/tabs/<id>[/screenshot|/eval]
             if (seg.length >= 6 && seg[4].equals("tabs")) {
-                String id = urlSegment(seg, 5);
-                TabItem t = id == null ? null : ProfileManager.findTab(p, id);
-                if (t == null) return err(404, "tab not found: " + id);
+                String id = Api.urlSegment(seg, 5);
 
                 if (seg.length == 6 && req.method.equals("DELETE")) {
-                    boolean done = ProfileManager.closeTab(p, id);
-                    return done ? json(ok()) : err(404, "tab not found: " + id);
+                    return toResp(ProfileManager.closeTab(p, id));
                 }
-
                 if (seg.length == 7 && seg[6].equals("screenshot") && req.method.equals("GET")) {
-                    byte[] png = ProfileManager.screenshot(t);
-                    return new Response(200, "image/png", png);
+                    ProfileManager.ProxyResult r = ProfileManager.screenshot(p, id);
+                    return toResp(r);
                 }
-
                 if (seg.length == 7 && seg[6].equals("eval") && req.method.equals("POST")) {
                     String js = req.query.getOrDefault("js", "");
                     if (js.isEmpty() && req.body.length > 0) {
                         try {
-                            JSONObject b = new JSONObject(req.bodyString());
-                            js = b.optString("js", "");
+                            js = new JSONObject(req.bodyString()).optString("js", "");
                         } catch (Exception ignored) {
                         }
                     }
                     if (js.isEmpty()) return err(400, "js required (?js=... or body {\"js\":\"...\"})");
-                    try {
-                        String raw = ProfileManager.eval(t, js);
-                        JSONObject o = ok();
-                        try {
-                            o.put("result", new org.json.JSONTokener(raw).nextValue());
-                        } catch (Exception e) {
-                            o.put("result", raw);
-                        }
-                        return json(o);
-                    } catch (Exception e) {
-                        return err(500, e.getMessage());
-                    }
+                    return toResp(ProfileManager.eval(p, id, js));
                 }
             }
         }
 
-        // ---- /<profile>/json[/version|/list]  (CDP-style passthrough)
+        // /<profile>/json[/version|/list]
         if (seg.length >= 3 && seg[2] != null && seg[2].equals("json")) {
             Profile p = ProfileManager.find(seg[1]);
             if (p == null) return err(404, "profile not found: " + seg[1]);
-            if (seg.length == 3) return cdpList(p);
-            if (seg.length == 4 && seg[3].equals("version")) return cdpVersion(p);
-            if (seg.length == 4 && seg[3].equals("list")) return cdpList(p);
+            if (seg.length == 4 && seg[3].equals("version")) {
+                JSONObject o = new JSONObject();
+                try {
+                    o.put("Browser", "SamCDP-WebView/1.1.0");
+                    o.put("Protocol-Version", "1.3");
+                    o.put("User-Agent", "SamCDP-Android/1.1.0 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("Android", android.os.Build.VERSION.RELEASE);
+                    o.put("Profile", p.name);
+                    o.put("Running", p.running);
+                    o.put("IsolatedCookieJar", p.running);
+                } catch (Exception ignored) {
+                }
+                return json(200, o);
+            }
+            if (seg.length == 3 || (seg.length == 4 && seg[3].equals("list"))) {
+                if (!p.running) return err(409, "profile not running");
+                ProfileManager.ProxyResult r = ProfileManager.tabs(p);
+                JSONObject o = ok();
+                try {
+                    o.put("source", "isolated-runner");
+                    JSONArray tabs = new JSONObject(new String(r.payload)).optJSONArray("tabs");
+                    o.put("targets", tabs == null ? new JSONArray() : tabs);
+                } catch (Exception e) {
+                    o.put("targets", new JSONArray());
+                }
+                return json(200, o);
+            }
         }
 
         return err(404, "not found: " + req.method + " " + req.path);
     }
 
-    private static String urlSegment(String[] seg, int idx) {
+    private static Response toResp(ProfileManager.ProxyResult r) {
+        return new Response(r.status, r.contentType, r.payload);
+    }
+
+    static String urlSegment(String[] seg, int idx) {
         if (idx < seg.length) {
             try {
                 return java.net.URLDecoder.decode(seg[idx], "UTF-8");
@@ -236,102 +268,49 @@ public class Api extends HttpServer {
         return null;
     }
 
-    private JSONObject tabJson(Profile p, TabItem t) {
-        try {
-            JSONObject o = new JSONObject();
-            o.put("id", t.id);
-            o.put("title", t.title);
-            o.put("url", t.url);
-            o.put("type", "page");
-            o.put("profile", p.name);
-            o.put("opened_at_s", t.openedAtMs / 1000);
-            o.put("screenshot", "/api/profiles/" + p.name + "/tabs/" + t.id + "/screenshot");
-            return o;
-        } catch (Exception e) {
-            return new JSONObject();
-        }
-    }
-
-    private Response cdpList(Profile p) {
-        if (!p.running) return err(409, "profile not running");
-        String real = ProfileManager.devtoolsList();
-        JSONObject o = ok();
-        try {
-            if (real != null) {
-                o.put("source", "webview-devtools");
-                o.put("targets", new org.json.JSONTokener(real).nextValue());
-            } else {
-                JSONArray arr = new JSONArray();
-                for (TabItem t : ProfileManager.tabs(p)) arr.put(tabJson(p, t));
-                o.put("source", "registry");
-                o.put("targets", arr);
-            }
-        } catch (Exception e) {
-            return err(500, e.getMessage());
-        }
-        return json(o);
-    }
-
-    private Response cdpVersion(Profile p) {
-        JSONObject o = new JSONObject();
-        try {
-            o.put("Browser", "SamCDP-WebView/1.0.0");
-            o.put("Protocol-Version", "1.3");
-            o.put("User-Agent", "SamCDP-Android/1.0.0 (Android " + android.os.Build.VERSION.RELEASE + ")");
-            o.put("Android", android.os.Build.VERSION.RELEASE);
-            o.put("Profile", p.name);
-            o.put("Running", p.running);
-        } catch (Exception ignored) {
-        }
-        return json(o);
-    }
-
-    // ------------------------------------------------------------------ docs page
+    // ------------------------------------------------------------------ docs page (desktop style)
 
     private String docsPage() {
-        String ip = CdpService.localIp();
-        String base = "http://" + ip + ":" + port();
+        String remote = TunnelManager.state() == TunnelManager.State.ONLINE
+                ? TunnelManager.url()
+                : "http://" + CdpService.localIp() + ":" + port();
         StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">");
+        sb.append("<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"UTF-8\">");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.append("<title>SamCDP — Android API</title><style>");
-        sb.append("*{margin:0;padding:0;box-sizing:border-box}");
-        sb.append("body{background:#0a0a0a;color:#e0e0e0;font-family:monospace;padding:24px;line-height:1.6}");
-        sb.append("h1{color:#4ade80;font-size:20px}h2{color:#4ade80;font-size:15px;margin:18px 0 8px}");
-        sb.append(".muted{color:#888;font-size:12px}code{background:#1a1a1a;padding:2px 6px;border-radius:4px;font-size:12px}");
-        sb.append("table{border-collapse:collapse;width:100%;font-size:12px;margin-top:6px}");
-        sb.append("td,th{border:1px solid #2a2a2a;padding:6px 8px;text-align:left}th{color:#4ade80}");
-        sb.append(".u{color:#4ade80;word-break:break-all}");
+        sb.append("<title>CDP Client — SamCDP Android API</title><style>");
+        sb.append("body{background:#FFF3E2;color:#4A3B2A;font-family:-apple-system,system-ui,sans-serif;padding:24px;line-height:1.7;max-width:860px;margin:0 auto}");
+        sb.append("h1{color:#D2610F;font-size:22px}h2{color:#D2610F;font-size:16px;margin:20px 0 8px}");
+        sb.append(".muted{color:#A8957D;font-size:12px}code{background:#FFFCF3;border:1px solid #EFD9AE;padding:2px 7px;border-radius:5px;font-size:12px;font-family:monospace}");
+        sb.append("table{border-collapse:collapse;width:100%;font-size:13px;margin-top:8px;background:#FFFAF0}");
+        sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
+        sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>SamCDP — Android v1.0.0</h1>");
-        sb.append("<p class=\"muted\">Remote WebView automation for AI agents · desktop-compatible REST API<br>");
-        sb.append("Base URL: <span class=\"u\">").append(base).append("</span></p>");
-        sb.append("<h2>Endpoints</h2><table>");
-        sb.append("<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>");
-        row(sb, "GET", "/?token=xxx", "This docs page");
-        row(sb, "GET", "/api/health?token=xxx", "Health probe");
-        row(sb, "GET", "/api/status?token=xxx", "Server status (ip/port/uptime)");
-        row(sb, "GET", "/api/profiles?token=xxx", "List all profiles");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", "Start profile (duration required, minutes)");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", "Stop profile");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "List tabs");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&token=xxx", "Open a new tab (headless WebView)");
-        row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "Close a tab");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", "PNG screenshot of the tab");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", "Run JS in the tab (body {\"js\":\"...\"})");
-        row(sb, "GET", "/&lt;profile&gt;/json/version?token=xxx", "CDP-style version info");
-        row(sb, "GET", "/&lt;profile&gt;/json/list?token=xxx", "CDP-style target list");
+        sb.append("<h1>⚙ CDP Client — SamCDP Android v1.1.0</h1>");
+        sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
+        sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
+        sb.append("<h2>接口列表</h2><table>");
+        sb.append("<tr><th>方法</th><th>路径</th><th>说明</th></tr>");
+        row(sb, "GET", "/?token=xxx", "本页（API 文档）");
+        row(sb, "GET", "/api/health?token=xxx", "健康检查");
+        row(sb, "GET", "/api/status?token=xxx", "服务器状态（含隧道地址）");
+        row(sb, "GET", "/api/tunnel?token=xxx", "aitun 隧道状态");
+        row(sb, "POST", "/api/tunnel/start?mode=temp&token=xxx", "启动临时代理隧道");
+        row(sb, "POST", "/api/tunnel/start?mode=subdomain&key=ait_xxx&token=xxx", "启动子域名隧道");
+        row(sb, "POST", "/api/tunnel/stop?token=xxx", "停止隧道");
+        row(sb, "GET", "/api/profiles?token=xxx", "列出 Profile");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", "启动（独立进程 Cookie 池）");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", "停止（Cookie 持久化）");
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&ua=AGENT&token=xxx", "打开标签页");
+        row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "关闭标签页");
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", "标签页 PNG 截图");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", "执行 JS（body {\"js\":\"...\"}）");
+        row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", "CDP 风格透传");
         sb.append("</table>");
-        sb.append("<h2>Example</h2>");
-        sb.append("<code>curl -X POST \"").append(base)
-                .append("/api/profiles/agent-1/start?token=").append(token)
-                .append("&amp;duration=30\"</code><br>");
-        sb.append("<code>curl -X POST \"").append(base)
-                .append("/api/profiles/agent-1/tabs/new?url=https://example.com&amp;token=").append(token).append("\"</code><br>");
-        sb.append("<code>curl \"").append(base).append("/api/profiles/agent-1/tabs?token=").append(token).append("\"</code>");
-        sb.append("<p class=\"muted\">Auth: ?token= query param or Authorization: Bearer header · ")
-                .append("Generated ").append(DateFormat.format("yyyy-MM-dd HH:mm", System.currentTimeMillis())).append("</p>");
-        sb.append("</body></html>");
+        sb.append("<h2>示例</h2>");
+        sb.append("<code>curl -X POST \"").append(remote).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code>");
+        sb.append("<p class=\"muted\">鉴权: ?token= 或 Authorization: Bearer · 每 Profile 运行在独立进程，Cookie 完全隔离 · ")
+                .append("SamAI Group</p></body></html>");
         return sb.toString();
     }
 

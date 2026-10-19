@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="cc.samaidev.samcdp"
-    android:versionCode="4"
-    android:versionName="1.0.2">
+    android:versionCode="5"
+    android:versionName="1.1.0">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -10,13 +10,16 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
-        android:allowBackup="false">
+        android:allowBackup="false"
+        android:extractNativeLibs="true">
 
         <activity
             android:name=".MainActivity"
@@ -32,5 +35,13 @@
             android:name=".CdpService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- One dedicated process per profile = isolated WebView data dir + cookie jar -->
+        <service android:name=".RunnerService1" android:exported="false" android:process=":cdp1" android:foregroundServiceType="dataSync" />
+        <service android:name=".RunnerService2" android:exported="false" android:process=":cdp2" android:foregroundServiceType="dataSync" />
+        <service android:name=".RunnerService3" android:exported="false" android:process=":cdp3" android:foregroundServiceType="dataSync" />
+        <service android:name=".RunnerService4" android:exported="false" android:process=":cdp4" android:foregroundServiceType="dataSync" />
+        <service android:name=".RunnerService5" android:exported="false" android:process=":cdp5" android:foregroundServiceType="dataSync" />
+        <service android:name=".RunnerService6" android:exported="false" android:process=":cdp6" android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

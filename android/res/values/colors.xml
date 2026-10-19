@@ -1,12 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#FF0A0A0A</color>
-    <color name="card">#FF161616</color>
-    <color name="card_border">#FF2A2A2A</color>
-    <color name="text">#FFE0E0E0</color>
-    <color name="text_dim">#FF888888</color>
-    <color name="accent">#FF4ADE80</color>
-    <color name="accent_dark">#FF0D5C56</color>
-    <color name="danger">#FFEF4444</color>
-    <color name="warn">#FFF59E0B</color>
+    <!-- Desktop settings page palette (docs/settings-zh.png) -->
+    <color name="bg">#FFFFF3E2</color>              <!-- page background cream -->
+    <color name="card">#FFFFFAF0</color>            <!-- card background -->
+    <color name="card_border">#FFF2DDB2</color>     <!-- card outline -->
+    <color name="input_bg">#FFFFFCF3</color>        <!-- input field bg -->
+    <color name="input_border">#FFEFD9AE</color>    <!-- input field outline -->
+    <color name="heading">#FFD2610F</color>         <!-- section headings / buttons -->
+    <color name="accent">#FFF57C00</color>          <!-- orange accent -->
+    <color name="accent_deep">#FFF0591C</color>     <!-- gradient end -->
+    <color name="accent_light">#FFFFA033</color>    <!-- gradient start -->
+    <color name="text">#FF4A3B2A</color>            <!-- primary brown text -->
+    <color name="text_dim">#FFA8957D</color>        <!-- hint warm gray -->
+    <color name="url_green">#FF2F9E44</color>       <!-- remote URL green -->
+    <color name="status_green">#FF43A047</color>    <!-- 运行中 green -->
+    <color name="dot_green">#FF4CAF50</color>
+    <color name="dot_red">#FFE53935</color>
+    <color name="dot_orange">#FFFF8C00</color>
+    <color name="danger">#FFE53935</color>
+    <color name="danger_bg">#FFFDECEA</color>
+    <color name="icon_bg">#FFFF8C00</color>         <!-- adaptive icon bg (desktop logo) -->
 </resources>

@@ -38,6 +38,30 @@ public class Prefs {
         sp.edit().putInt("port", p).apply();
     }
 
+    public String aitunKey() {
+        return sp.getString("aitun_key", "");
+    }
+
+    public void setAitunKey(String k) {
+        sp.edit().putString("aitun_key", k == null ? "" : k).apply();
+    }
+
+    public String tunnelMode() {
+        return sp.getString("tunnel_mode", "temp");
+    }
+
+    public void setTunnelMode(String m) {
+        sp.edit().putString("tunnel_mode", "subdomain".equals(m) ? "subdomain" : "temp").apply();
+    }
+
+    public boolean autoTunnel() {
+        return sp.getBoolean("auto_tunnel", false);
+    }
+
+    public void setAutoTunnel(boolean b) {
+        sp.edit().putBoolean("auto_tunnel", b).apply();
+    }
+
     /** profiles: [{"name":"agent-1","port":9334,"enabled":true}] */
     public JSONArray profilesJson() {
         String raw = sp.getString("profiles", null);
@@ -63,19 +87,6 @@ public class Prefs {
 
     public void saveProfiles(JSONArray arr) {
         sp.edit().putString("profiles", arr.toString()).apply();
-    }
-
-    /** Persisted cookie jar per profile: {"<profile>": [{"domain":"example.com","cookie":"k=v; k2=v2"}]} */
-    public JSONObject cookieStore() {
-        try {
-            return new JSONObject(sp.getString("cookies", "{}"));
-        } catch (Exception e) {
-            return new JSONObject();
-        }
-    }
-
-    public void saveCookieStore(JSONObject store) {
-        sp.edit().putString("cookies", store.toString()).apply();
     }
 
     public static String randomToken() {

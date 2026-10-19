@@ -15,6 +15,7 @@ import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Enumeration;
 
+/** Main-process foreground service: hosts the management API server + tunnel. */
 public class CdpService extends Service {
 
     public static final String ACTION_RUN = "cc.samaidev.samcdp.RUN";
@@ -68,29 +69,29 @@ public class CdpService extends Service {
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
-        String token = new Prefs(this).token();
-        int port = new Prefs(this).port();
-        String url = "http://" + localIp() + ":" + port;
-
         Intent open = new Intent(this, MainActivity.class);
         PendingIntent pOpen = PendingIntent.getActivity(this, 1, open,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-
         Notification.Builder b = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID)
                 : new Notification.Builder(this);
         b.setContentTitle(getString(R.string.notif_title))
                 .setSmallIcon(R.drawable.ic_stat)
-                .setContentText(url + "  ·  token " + token)
+                .setContentText(notificationText())
                 .setContentIntent(pOpen)
                 .setOngoing(true);
-
         Notification n = b.build();
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
             startForeground(NOTIF_ID, n);
         }
+    }
+
+    private String notificationText() {
+        String lan = "http://" + localIp + ":" + new Prefs(this).port();
+        String remote = TunnelManager.url();
+        return remote != null ? remote + "  ·  " + lan : lan;
     }
 
     private void startServer() {
@@ -102,32 +103,55 @@ public class CdpService extends Service {
         try {
             server.start();
             api = server;
-            ProfileManager.log("server listening on http://" + localIp + ":" + prefs.port()
+            TunnelManager.setListener(() -> runOnUiThreadToastFix());
+            ProfileManager.dispatchLog("server listening on " + notificationText()
                     + "  (token " + prefs.token() + ")");
         } catch (Exception e) {
-            ProfileManager.log("server start FAILED: " + e.getMessage());
+            ProfileManager.dispatchLog("server start FAILED: " + e.getMessage());
             stopSelf();
         }
     }
 
+    /** Refresh the foreground notification when tunnel state changes. */
+    private void runOnUiThreadToastFix() {
+        try {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            Intent open = new Intent(this, MainActivity.class);
+            PendingIntent pOpen = PendingIntent.getActivity(this, 1, open,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26
+                    ? new Notification.Builder(this, CHANNEL_ID)
+                    : new Notification.Builder(this);
+            b.setContentTitle(getString(R.string.notif_title))
+                    .setSmallIcon(R.drawable.ic_stat)
+                    .setContentText(notificationText())
+                    .setContentIntent(pOpen)
+                    .setOngoing(true);
+            nm.notify(NOTIF_ID, b.build());
+        } catch (Exception ignored) {
+        }
+    }
+
     private void shutdown() {
+        TunnelManager.stop();
         if (api != null) {
             api.stop();
             api = null;
         }
-        ProfileManager.stopAll();
+        ProfileManager.stopAll(this);
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
-        ProfileManager.log("service stopped");
+        ProfileManager.dispatchLog("service stopped");
     }
 
     @Override
     public void onDestroy() {
+        TunnelManager.stop();
         if (api != null) {
             api.stop();
             api = null;
         }
-        ProfileManager.stopAll();
+        ProfileManager.stopAll(this);
         super.onDestroy();
     }
 

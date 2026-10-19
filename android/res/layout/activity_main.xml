@@ -6,128 +6,297 @@
     android:scrollbars="none">
 
     <LinearLayout
-        android:id="@+id/root"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="SamCDP"
-                android:textColor="@color/accent"
-                android:textSize="22sp"
-                android:textStyle="bold"
-                android:fontFamily="monospace" />
-
-            <TextView
-                android:id="@+id/version"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="v1.0.0"
-                android:textColor="@color/text_dim"
-                android:textSize="12sp"
-                android:fontFamily="monospace" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="12dp"
-            android:padding="14dp"
-            android:background="@drawable/card_bg">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <View
-                    android:id="@+id/dot"
-                    android:layout_width="10dp"
-                    android:layout_height="10dp"
-                    android:layout_marginEnd="8dp"
-                    android:background="@drawable/dot_amber" />
-
-                <TextView
-                    android:id="@+id/status"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Stopped"
-                    android:textColor="@color/text"
-                    android:textSize="14sp"
-                    android:fontFamily="monospace" />
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/url"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:text="http://—:—"
-                android:textColor="@color/accent"
-                android:textSize="13sp"
-                android:fontFamily="monospace"
-                android:textIsSelectable="true" />
-
-            <TextView
-                android:id="@+id/token"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:text="token: —"
-                android:textColor="@color/text_dim"
-                android:textSize="12sp"
-                android:fontFamily="monospace"
-                android:textIsSelectable="true" />
-        </LinearLayout>
-
-        <Button
-            android:id="@+id/btn_toggle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:text="Run"
-            android:textColor="@color/bg"
-            android:fontFamily="monospace"
-            android:backgroundTint="@color/accent" />
+        android:paddingLeft="20dp"
+        android:paddingRight="20dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="32dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="PROFILES"
+            android:text="⚙ CDP Client 设置"
+            android:textColor="@color/heading"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <!-- ============ 远程地址 ============ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="远程地址"
+            android:textColor="@color/heading"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/input_bg"
+            android:paddingLeft="14dp"
+            android:paddingRight="8dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp">
+
+            <TextView
+                android:id="@+id/remote_url"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="—"
+                android:textColor="@color/url_green"
+                android:textSize="14sp"
+                android:fontFamily="monospace"
+                android:textIsSelectable="true" />
+
+            <Button
+                android:id="@+id/btn_copy"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:minWidth="0dp"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:text="复制"
+                android:textColor="@color/heading"
+                android:textSize="13sp"
+                android:background="@drawable/btn_orange" />
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="访问此地址查看 API 文档和接口说明（需带 ?token=xxx）"
+            android:textColor="@color/text_dim"
+            android:textSize="12sp" />
+
+        <!-- ============ aitun 隧道 ============ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="aitun 隧道"
+            android:textColor="@color/heading"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/aitun_key"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/input_bg"
+            android:padding="14dp"
+            android:hint="ait_xxxxxxxxxxxx（留空则使用临时代理）"
+            android:textColorHint="@color/text_dim"
+            android:textColor="@color/text"
+            android:textSize="14sp"
+            android:inputType="textPassword"
+            android:fontFamily="monospace"
+            android:maxLines="1" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="在 aitun.cc 注册获取 Key，用于固定子域名"
+            android:textColor="@color/text_dim"
+            android:textSize="12sp" />
+
+        <RadioGroup
+            android:id="@+id/tunnel_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <RadioButton
+                android:id="@+id/mode_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="临时代理（自动分配，24h）"
+                android:textColor="@color/text"
+                android:textSize="13sp"
+                android:checked="true" />
+
+            <RadioButton
+                android:id="@+id/mode_subdomain"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:text="子域名（需 Key）"
+                android:textColor="@color/text"
+                android:textSize="13sp" />
+        </RadioGroup>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_tunnel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="启动隧道"
+                android:textColor="@color/heading"
+                android:textSize="13sp"
+                android:background="@drawable/btn_orange" />
+
+            <Button
+                android:id="@+id/btn_battery"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="10dp"
+                android:text="电池优化"
+                android:textColor="@color/heading"
+                android:textSize="13sp"
+                android:background="@drawable/btn_orange" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tunnel_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="隧道未启动"
             android:textColor="@color/text_dim"
             android:textSize="12sp"
-            android:fontFamily="monospace"
-            android:letterSpacing="0.1" />
+            android:fontFamily="monospace" />
+
+        <!-- ============ 运行状态 ============ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="运行状态"
+            android:textColor="@color/heading"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/card_bg"
+            android:padding="14dp">
+
+            <View
+                android:id="@+id/dot"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_marginEnd="10dp"
+                android:background="@drawable/dot_red" />
+
+            <TextView
+                android:id="@+id/status"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="已停止"
+                android:textColor="@color/text"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- ============ Profile 管理 ============ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="Profile 管理"
+            android:textColor="@color/heading"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <LinearLayout
             android:id="@+id/profiles"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="8dp"
+            android:orientation="vertical" />
 
+        <Button
+            android:id="@+id/btn_add_profile"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="+ 新增 Profile"
+            android:textColor="@color/heading"
+            android:textSize="13sp"
+            android:background="@drawable/btn_orange" />
+
+        <!-- ============ Token ============ -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="LOG"
-            android:textColor="@color/text_dim"
-            android:textSize="12sp"
+            android:layout_marginTop="20dp"
+            android:text="Token"
+            android:textColor="@color/heading"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <EditText
+            android:id="@+id/token_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/input_bg"
+            android:padding="14dp"
+            android:textColor="@color/text"
+            android:textSize="14sp"
             android:fontFamily="monospace"
-            android:letterSpacing="0.1" />
+            android:maxLines="1" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="远程 API 鉴权用，格式: ?token=xxx"
+            android:textColor="@color/text_dim"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btn_regen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="重新生成"
+            android:textColor="@color/heading"
+            android:textSize="13sp"
+            android:background="@drawable/btn_orange" />
+
+        <!-- ============ 保存设置 ============ -->
+        <Button
+            android:id="@+id/btn_save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="22dp"
+            android:text="保存设置"
+            android:textColor="#FFFFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:background="@drawable/btn_save" />
+
+        <!-- ============ LOG ============ -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="日志"
+            android:textColor="@color/heading"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/log"
@@ -137,19 +306,8 @@
             android:padding="12dp"
             android:background="@drawable/card_bg"
             android:textColor="@color/text_dim"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:fontFamily="monospace"
             android:textIsSelectable="true" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp"
-            android:text="SamAI Group · Remote WebView automation for AI agents"
-            android:textColor="@color/text_dim"
-            android:textSize="11sp"
-            android:fontFamily="monospace"
-            android:gravity="center" />
     </LinearLayout>
 </ScrollView>
