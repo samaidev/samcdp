@@ -12,9 +12,9 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.1.3-debug.apk"
+APK_OUT="$OUT/SamCDP-android-v1.1.4-debug.apk"
 
-rm -rf "$OUT" gen
+rm -rf "$OUT" gen classes
 mkdir -p "$OUT" gen classes "$OUT/dex"
 
 echo "[1/6] aapt2 compile+link"
@@ -28,10 +28,15 @@ echo "[1/6] aapt2 compile+link"
 
 echo "[2/6] ecj compile"
 find src gen -name "*.java" > "$OUT/sources.txt"
+ECJ_LOG="$OUT/ecj.log"
 java -jar "${ECJ:-$SDK_DIR/ecj.jar}" -nowarn -encoding UTF-8 \
   -source 8 -target 8 -bootclasspath "$PLAT/android.jar:$BT/core-lambda-stubs.jar" \
-  -d classes @"$OUT/sources.txt" 2>&1 | grep -vE "^\s*$" || true
-[ -d classes/cc ] || { echo "COMPILATION FAILED"; exit 1; }
+  -d classes @"$OUT/sources.txt" > "$ECJ_LOG" 2>&1 || true
+if grep -q "ERROR in" "$ECJ_LOG" || [ ! -d classes/cc ]; then
+  echo "COMPILATION FAILED:"
+  grep -A2 "ERROR in" "$ECJ_LOG" | head -30
+  exit 1
+fi
 
 echo "[3/6] d8 dex"
 "$BT/d8" --release --min-api 26 --lib "$PLAT/android.jar" \
