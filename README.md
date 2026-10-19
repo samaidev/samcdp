@@ -129,9 +129,19 @@ print(resp.json())
 ![Android App](android/docs/android-app.png)
 ![Baidu tab rendered headless on phone](android/docs/android-tab-baidu.png)
 
+### Highlights (vs desktop)
+
+- **aitun tunnel built-in, dual mode** — 临时代理 (free auto-assigned URL, 24h) or 子域名 (registered subdomain with your `ait_` key). The tunnel client (`libaitunclient.so`, same one SamDocker uses) is bundled and executed from `nativeLibraryDir`; the app resolves `aitun.cc` via the Android resolver and passes `-s IP:6639` since Go static binaries can't read Android DNS
+- **True multi-cookie-jar profiles** — each started profile runs in its OWN Android process (`:cdp1`…`:cdp6`) with its own WebView data directory suffix, so cookie jars are fully isolated per profile; cookies persist to per-profile storage on stop and are restored on start
+- **Desktop-parity settings UI** — same warm cream/orange design and sections as the desktop settings page; desktop logo (orange C) as launcher icon
+- **Battery optimization button** (samdocker style) — request the system to exempt the app from Doze so the tunnel/service survives in background
+- **Remote profile management** — `POST /api/profiles/add?name=x`, `DELETE /api/profiles/<name>`
+
 ### Install
 
 Download `SamCDP-android-vX.Y.Z-debug.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (requires Android 8.0+ / API 26), sideload it (allow "install unknown apps"), open the app and tap **Run**. The app auto-starts the API server and shows its URL + token on screen.
+
+> MIUI/HyperOS note: enable Developer options → "Install via USB" when installing over `adb`.
 
 ### Android API surface
 
@@ -140,12 +150,18 @@ Identical to desktop, plus mobile-specific extras:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/health?token=xxx` | Health probe |
-| `GET` | `/api/status?token=xxx` | Server status (ip/port/uptime/running profiles) |
+| `GET` | `/api/status?token=xxx` | Server status (ip/port/tunnel/running profiles) |
+| `GET` | `/api/tunnel?token=xxx` | aitun tunnel state |
+| `POST` | `/api/tunnel/start?mode=temp&token=xxx` | Start temporary tunnel (free auto URL) |
+| `POST` | `/api/tunnel/start?mode=subdomain&key=ait_xxx&token=xxx` | Start subdomain tunnel |
+| `POST` | `/api/tunnel/stop?token=xxx` | Stop tunnel |
 | `GET` | `/api/profiles?token=xxx` | List all profiles |
-| `POST` | `/api/profiles/<name>/start?token=xxx&duration=MIN` | Start profile (duration required) |
+| `POST` | `/api/profiles/add?name=x&token=xxx` | Add profile (max 6, one process each) |
+| `DELETE` | `/api/profiles/<name>?token=xxx` | Remove profile |
+| `POST` | `/api/profiles/<name>/start?token=xxx&duration=MIN` | Start profile in isolated process |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | Stop profile (cookies persisted) |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | List tabs |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx&ua=AGENT` | Open tab (headless WebView, `ua` optional) |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&ua=AGENT&token=xxx` | Open tab (headless WebView, `ua` optional) |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | Close a tab |
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | PNG screenshot of the tab |
 | `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | Run JS in the tab, body `{"js":"..."}` |
@@ -154,7 +170,6 @@ Identical to desktop, plus mobile-specific extras:
 Notes:
 - Tabs render headless (1080x2340) with a desktop Chrome User-Agent by default; pass `&ua=...` to override
 - Non-http(s) navigations (deep links like `baiduboxapp://`) are blocked to prevent hijacks
-- Cookie jars are snapshotted per profile on stop and restored on start (login persistence)
 - `duration` triggers auto-stop, mirroring desktop behavior
 
 ### Build the APK from source

@@ -129,6 +129,14 @@ print(resp.json())
 ![安卓应用](android/docs/android-app.png)
 ![手机 headless 渲染的百度](android/docs/android-tab-baidu.png)
 
+### 亮点（相对桌面版）
+
+- **内置 aitun 隧道，双模式** — 临时代理（免费自动分配 URL，24h）/ 子域名（绑定 `ait_` Key 的固定域名）。隧道客户端（`libaitunclient.so`，与 SamDocker 同款）打包在 APK 内并从 `nativeLibraryDir` 执行；因 Go 静态二进制读不到安卓 DNS，App 会先用系统解析器解析 `aitun.cc` 再以 `-s IP:6639` 直连
+- **真·多 Cookie 存储池** — 每个 Profile 运行在独立安卓进程（`:cdp1`…`:cdp6`），拥有独立 WebView 数据目录后缀，Cookie 完全隔离；停止时快照到独立存储、启动时恢复
+- **桌面级设置界面** — 与桌面设置页相同的暖橙奶油配色与分区；桌面端 Logo（橙色 C）作为启动图标
+- **电池优化按钮**（参考 SamDocker）— 申请忽略电池优化，保证后台隧道/服务存活
+- **远程 Profile 管理** — `POST /api/profiles/add?name=x`、`DELETE /api/profiles/<name>`
+
 ### 安装
 
 从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 `SamCDP-android-vX.Y.Z-debug.apk`（需要 Android 8.0+ / API 26），允许"安装未知应用"后侧载安装，打开 App 点击**运行**。App 会自动启动 API 服务器，并在界面上显示访问地址和 Token。
@@ -142,21 +150,26 @@ print(resp.json())
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | `GET` | `/api/health?token=xxx` | 健康检查 |
-| `GET` | `/api/status?token=xxx` | 服务器状态（ip/port/uptime/运行中的 profile） |
-| `GET` | `/api/profiles?token=xxx` | 列出所有 profile |
-| `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动 profile（duration 必填） |
-| `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止 profile（Cookie 持久化） |
+| `GET` | `/api/status?token=xxx` | 服务器状态（含隧道地址） |
+| `GET` | `/api/tunnel?token=xxx` | aitun 隧道状态 |
+| `POST` | `/api/tunnel/start?mode=temp&token=xxx` | 启动临时代理隧道 |
+| `POST` | `/api/tunnel/start?mode=subdomain&key=ait_xxx&token=xxx` | 启动子域名隧道 |
+| `POST` | `/api/tunnel/stop?token=xxx` | 停止隧道 |
+| `GET` | `/api/profiles?token=xxx` | 列出 Profile |
+| `POST` | `/api/profiles/add?name=x&token=xxx` | 新增 Profile（最多 6 个，各占独立进程） |
+| `DELETE` | `/api/profiles/<name>?token=xxx` | 删除 Profile |
+| `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动（独立进程 Cookie 池） |
+| `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止（Cookie 持久化） |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页 |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx&ua=AGENT` | 打开标签页（headless WebView，`ua` 可选） |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&ua=AGENT&token=xxx` | 打开标签页 |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | 关闭标签页 |
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | 标签页 PNG 截图 |
-| `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | 在标签页内执行 JS，body `{"js":"..."}` |
+| `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | 在标签页内执行 JS |
 | `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP 风格透传 |
 
 说明：
 - 标签页默认以桌面 Chrome UA 渲染（1080x2340 headless），可用 `&ua=...` 覆盖
 - 非 http(s) 跳转（如 `baiduboxapp://` 深链）会被拦截，防止劫持
-- Cookie 按 Profile 快照持久化，start 时恢复（登录状态保留）
 - `duration` 到期自动关闭，与桌面版一致
 
 ### 从源码构建 APK
