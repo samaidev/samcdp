@@ -198,7 +198,7 @@ public abstract class BaseRunnerService extends Service {
                 payload = TabEngine.infoJson().getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/tabs") && method.equals("GET")) {
                 payload = TabEngine.listTabs().getBytes(StandardCharsets.UTF_8);
-            } else if (seg.length == 3 && seg[1].equals("open") && method.equals("POST")) {
+            } else if (seg.length == 2 && seg[1].equals("open") && method.equals("POST")) {
                 payload = TabEngine.openTab(getApplicationContext(), query.get("url"), query.get("ua"))
                         .getBytes(StandardCharsets.UTF_8);
             } else if (seg.length == 4 && seg[1].equals("tabs") && method.equals("GET")

@@ -175,7 +175,12 @@ public class TabEngine {
                 }
             });
             if (holder[0] == null) return err("failed to create tab");
-            return tabJson(holder[0]).put("ok", true).toString();
+            JSONObject o = tabJson(holder[0]);
+            o.put("ok", true);
+            JSONObject wrap = new JSONObject();
+            wrap.put("ok", true);
+            wrap.put("tab", o);
+            return wrap.toString();
         } catch (Exception e) {
             return err(e.getMessage());
         }
