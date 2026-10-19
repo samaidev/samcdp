@@ -160,7 +160,7 @@ public class Api extends HttpServer {
                 return json(o);
             }
 
-            if (seg.length == 5 && seg[4].equals("tabs") && req.method.equals("POST")) {
+            if (seg.length == 6 && seg[4].equals("tabs") && seg[5].equals("new") && req.method.equals("POST")) {
                 String url = req.query.get("url");
                 if (url == null || url.isEmpty()) return err(400, "url query param required");
                 if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")
@@ -213,14 +213,13 @@ public class Api extends HttpServer {
             }
         }
 
-        // ---- /<profile>/json/version|list  (CDP-style passthrough)
-        if (seg.length == 3 && seg[2].startsWith("json")) {
+        // ---- /<profile>/json[/version|/list]  (CDP-style passthrough)
+        if (seg.length >= 3 && seg[2] != null && seg[2].equals("json")) {
             Profile p = ProfileManager.find(seg[1]);
             if (p == null) return err(404, "profile not found: " + seg[1]);
-            if (seg[2].equals("json") || seg[2].equals("json/list")) {
-                return cdpList(p);
-            }
-            if (seg[2].equals("json/version")) return cdpVersion(p);
+            if (seg.length == 3) return cdpList(p);
+            if (seg.length == 4 && seg[3].equals("version")) return cdpVersion(p);
+            if (seg.length == 4 && seg[3].equals("list")) return cdpList(p);
         }
 
         return err(404, "not found: " + req.method + " " + req.path);

@@ -12,7 +12,7 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.0.0-debug.apk"
+APK_OUT="$OUT/SamCDP-android-v1.0.1-debug.apk"
 
 rm -rf "$OUT" gen
 mkdir -p "$OUT" gen classes "$OUT/dex"
