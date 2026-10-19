@@ -23,3 +23,8 @@ Thumbs.db
 
 # Config (contains secrets)
 config.json
+
+# Android build intermediates
+android/build/
+android/classes/
+android/gen/

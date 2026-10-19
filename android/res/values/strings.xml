@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SamCDP</string>
+    <string name="notif_channel">SamCDP Service</string>
+    <string name="notif_title">SamCDP running</string>
+</resources>
