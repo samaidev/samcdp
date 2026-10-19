@@ -11,11 +11,12 @@ Remote Chrome automation for AI agents. Expose local Chrome browsers as public H
 - **Multi-Profile Chrome Management** — Run multiple isolated Chrome instances simultaneously, each with its own login session, cookies, and debugging port
 - **One Public URL for All Profiles** — Single tunnel serves all Chrome instances via path routing (`/agent-1/json/list`, `/agent-2/json/list`, etc.)
 - **RESTful Management API** — Start/stop Chrome, list/open/close tabs, proxy raw CDP commands — all via HTTP
+- **Android Version (APK)** — Turn an Android phone into a remote WebView automation endpoint with the same REST API ([Releases](https://github.com/samaidev/samcdp/releases))
 - **Login Persistence** — Chrome user-data-dir preserves cookies and sessions across restarts; no need to re-login after restart
 - **Auto-Cleanup** — Automatically kills stale Chrome processes on startup to prevent window accumulation
 - **Duration-Based Auto-Shutdown** — Start Chrome with a time limit; auto-closes when expired
 - **System Tray Integration** — Native tray icon with run/stop/settings menu
-- **Cross-Platform** — Windows, Linux, and macOS
+- **Cross-Platform** — Windows, Linux, macOS, Android
 
 ## Screenshot
 
@@ -120,6 +121,51 @@ requests.post(f"{BASE}/api/profiles/agent-1/start", params={"token": TOKEN, "dur
 resp = requests.get(f"{BASE}/api/profiles/agent-1/tabs", params={"token": TOKEN})
 print(resp.json())
 ```
+
+## Android Version (APK)
+
+**SamCDP-Android** turns an Android phone into a remote WebView automation endpoint. The on-device REST API is 1:1 compatible with the desktop version — profiles map to isolated headless WebView sessions instead of Chrome instances.
+
+![Android App](android/docs/android-app.png)
+![Baidu tab rendered headless on phone](android/docs/android-tab-baidu.png)
+
+### Install
+
+Download `SamCDP-android-vX.Y.Z-debug.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (requires Android 8.0+ / API 26), sideload it (allow "install unknown apps"), open the app and tap **Run**. The app auto-starts the API server and shows its URL + token on screen.
+
+### Android API surface
+
+Identical to desktop, plus mobile-specific extras:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/health?token=xxx` | Health probe |
+| `GET` | `/api/status?token=xxx` | Server status (ip/port/uptime/running profiles) |
+| `GET` | `/api/profiles?token=xxx` | List all profiles |
+| `POST` | `/api/profiles/<name>/start?token=xxx&duration=MIN` | Start profile (duration required) |
+| `POST` | `/api/profiles/<name>/stop?token=xxx` | Stop profile (cookies persisted) |
+| `GET` | `/api/profiles/<name>/tabs?token=xxx` | List tabs |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx&ua=AGENT` | Open tab (headless WebView, `ua` optional) |
+| `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | Close a tab |
+| `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | PNG screenshot of the tab |
+| `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | Run JS in the tab, body `{"js":"..."}` |
+| `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP-style passthrough |
+
+Notes:
+- Tabs render headless (1080x2340) with a desktop Chrome User-Agent by default; pass `&ua=...` to override
+- Non-http(s) navigations (deep links like `baiduboxapp://`) are blocked to prevent hijacks
+- Cookie jars are snapshotted per profile on stop and restored on start (login persistence)
+- `duration` triggers auto-stop, mirroring desktop behavior
+
+### Build the APK from source
+
+```bash
+# dependency-free toolchain: build-tools 34 (aapt2/d8/apksigner) + platform-34 + ECJ
+SDK_DIR=/path/to/sdk android/build.sh
+# → android/build/SamCDP-android-vX.Y.Z-debug.apk
+```
+
+See [android/README.md](android/README.md) for details.
 
 ## Download Pre-built Binaries
 

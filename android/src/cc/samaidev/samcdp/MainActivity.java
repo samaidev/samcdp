@@ -46,7 +46,12 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         btnToggle = findViewById(R.id.btn_toggle);
         logView = findViewById(R.id.log);
         profilesBox = findViewById(R.id.profiles);
-        ((TextView) findViewById(R.id.version)).setText("v1.0.0");
+        try {
+            ((TextView) findViewById(R.id.version)).setText(
+                    "v" + getPackageManager().getPackageInfo(getPackageName(), 0).versionName);
+        } catch (Exception e) {
+            ((TextView) findViewById(R.id.version)).setText("v1.0.2");
+        }
 
         ProfileManager.setLogSink(this);
 

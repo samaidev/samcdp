@@ -11,11 +11,12 @@
 - **多 Profile Chrome 管理** — 同时运行多个独立 Chrome 实例，各自拥有独立的登录状态、Cookie 和调试端口
 - **一个公网地址管所有 Profile** — 单条隧道通过路径路由服务所有 Chrome 实例（`/agent-1/json/list`、`/agent-2/json/list` 等）
 - **RESTful 管理 API** — 通过 HTTP 启动/停止 Chrome、列出/打开/关闭标签页、透传原生 CDP 协议
+- **Android 版本（APK）** — 把安卓手机变成远程 WebView 自动化端点，REST API 与桌面版 1:1 兼容（见 [Releases](https://github.com/samaidev/samcdp/releases)）
 - **登录状态持久化** — Chrome user-data-dir 保留 Cookie 和 session，重启后无需重新登录
 - **自动清理** — 启动时自动杀掉残留 Chrome 进程，防止窗口堆积
 - **超时自动关闭** — 启动 Chrome 时可指定运行时长（分钟），到期自动关闭
 - **系统托盘集成** — 原生托盘图标，支持运行/停止/设置菜单
-- **跨平台** — 支持 Windows、Linux 和 macOS
+- **跨平台** — 支持 Windows、Linux、macOS、Android
 
 ## 截图
 
@@ -120,6 +121,53 @@ requests.post(f"{BASE}/api/profiles/agent-1/start", params={"token": TOKEN, "dur
 resp = requests.get(f"{BASE}/api/profiles/agent-1/tabs", params={"token": TOKEN})
 print(resp.json())
 ```
+
+## Android 版本（APK）
+
+**SamCDP-Android** 把安卓手机变成远程 WebView 自动化端点。手机端 REST API 与桌面版 1:1 兼容 —— Profile 对应隔离的 headless WebView 会话（替代桌面版 Chrome 实例）。
+
+![安卓应用](android/docs/android-app.png)
+![手机 headless 渲染的百度](android/docs/android-tab-baidu.png)
+
+### 安装
+
+从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 `SamCDP-android-vX.Y.Z-debug.apk`（需要 Android 8.0+ / API 26），允许"安装未知应用"后侧载安装，打开 App 点击**运行**。App 会自动启动 API 服务器，并在界面上显示访问地址和 Token。
+
+> MIUI/HyperOS 提示：如通过 `adb` 安装，需在开发者选项中开启"USB 安装"。
+
+### 安卓端 API
+
+与桌面版一致，另有移动端专属接口：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/api/health?token=xxx` | 健康检查 |
+| `GET` | `/api/status?token=xxx` | 服务器状态（ip/port/uptime/运行中的 profile） |
+| `GET` | `/api/profiles?token=xxx` | 列出所有 profile |
+| `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动 profile（duration 必填） |
+| `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止 profile（Cookie 持久化） |
+| `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页 |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx&ua=AGENT` | 打开标签页（headless WebView，`ua` 可选） |
+| `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | 关闭标签页 |
+| `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | 标签页 PNG 截图 |
+| `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | 在标签页内执行 JS，body `{"js":"..."}` |
+| `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP 风格透传 |
+
+说明：
+- 标签页默认以桌面 Chrome UA 渲染（1080x2340 headless），可用 `&ua=...` 覆盖
+- 非 http(s) 跳转（如 `baiduboxapp://` 深链）会被拦截，防止劫持
+- Cookie 按 Profile 快照持久化，start 时恢复（登录状态保留）
+- `duration` 到期自动关闭，与桌面版一致
+
+### 从源码构建 APK
+
+```bash
+# 零依赖工具链：build-tools 34（aapt2/d8/apksigner）+ platform-34 + ECJ
+SDK_DIR=/path/to/sdk android/build.sh
+# → android/build/SamCDP-android-vX.Y.Z-debug.apk
+```
+
+详见 [android/README.md](android/README.md)。
 
 ## 下载预编译二进制
 
