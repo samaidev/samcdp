@@ -29,7 +29,7 @@ func (p *CDPProxy) handleDocsPage(w http.ResponseWriter, r *http.Request) {
 
 func renderLockedDocs(baseURL string) string {
 	return `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>CDP Manager</title>
+<title>samcdp</title>
 <style>
 body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:40px;margin:0}
 .box{max-width:700px;margin:0 auto;text-align:center}
@@ -39,7 +39,7 @@ h1{color:#ff8c00;font-size:28px}
 code{background:#0f3460;padding:2px 8px;border-radius:4px;color:#ff8c00}
 </style></head><body>
 <div class="box">
-<h1>🔒 CDP Manager</h1>
+<h1>🔒 samcdp</h1>
 <div class="locked">
 <p style="font-size:18px">需要鉴权才能访问</p>
 <p class="hint">在 URL 后添加 <code>?token=YOUR_TOKEN</code></p>
@@ -51,7 +51,7 @@ code{background:#0f3460;padding:2px 8px;border-radius:4px;color:#ff8c00}
 func renderFullDocs(baseURL, token string) string {
 	return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>CDP Manager API</title>
+<title>samcdp API</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:system-ui,-apple-system,sans-serif;background:#0f0f23;color:#e0e0e0;padding:24px}
@@ -84,7 +84,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 .profile-status.offline{color:#ef9a9a}
 </style></head><body>
 <div class="container">
-<h1>🚀 CDP Manager API</h1>
+<h1>🚀 samcdp API</h1>
 <p class="subtitle">远程 Chrome CDP 管理接口 · 单隧道多 Profile 架构</p>
 
 <div class="token-box">

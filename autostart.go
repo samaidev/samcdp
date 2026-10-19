@@ -108,7 +108,7 @@ func linuxIsAutoStartEnabled() (bool, error) {
 func linuxEnableAutoStart() error {
 	exe, _ := os.Executable()
 	content := fmt.Sprintf(`[Unit]
-Description=CDP Client
+Description=samcdp
 After=network.target
 
 [Service]

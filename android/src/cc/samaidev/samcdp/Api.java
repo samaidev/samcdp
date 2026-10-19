@@ -79,15 +79,15 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.1.0");
+            o.put("version", "1.1.5");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
 
         if (path.equals("/api/status")) {
             JSONObject o = ok();
-            o.put("app", "SamCDP-Android");
-            o.put("version", "1.1.0");
+            o.put("app", "samcdp-android");
+            o.put("version", "1.1.5");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -253,9 +253,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "SamCDP-WebView/1.1.3");
+                    o.put("Browser", "samcdp-webview/1.1.5");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "SamCDP-Android/1.1.3 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.1.5 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -306,7 +306,7 @@ public class Api extends HttpServer {
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"UTF-8\">");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
-        sb.append("<title>CDP Client — SamCDP Android API</title><style>");
+        sb.append("<title>samcdp Android API</title><style>");
         sb.append("body{background:#FFF3E2;color:#4A3B2A;font-family:-apple-system,system-ui,sans-serif;padding:24px;line-height:1.7;max-width:860px;margin:0 auto}");
         sb.append("h1{color:#D2610F;font-size:22px}h2{color:#D2610F;font-size:16px;margin:20px 0 8px}");
         sb.append(".muted{color:#A8957D;font-size:12px}code{background:#FFFCF3;border:1px solid #EFD9AE;padding:2px 7px;border-radius:5px;font-size:12px;font-family:monospace}");
@@ -314,7 +314,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ CDP Client — SamCDP Android v1.1.3</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.1.5</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");

@@ -209,8 +209,14 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(run);
         else startService(run);
         if (tunnelWasUp) {
-            ui.postDelayed(() -> TunnelManager.start(getApplicationContext(), tunnelMode, key,
-                    new Prefs(this).port()), 2500);
+            if (tunnelMode.equals("subdomain") && key.isEmpty()) {
+                // never silently restart as something else; say exactly what was skipped
+                ProfileManager.dispatchLog("[aitun] auto-restart skipped: subdomain mode without key");
+                Toast.makeText(this, "隧道未自动重启：子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
+            } else {
+                ui.postDelayed(() -> TunnelManager.start(getApplicationContext(), tunnelMode, key,
+                        new Prefs(this).port()), 2500);
+            }
         }
         ui.postDelayed(this::render, 600);
     }
@@ -261,9 +267,24 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         // tunnel line
         TunnelManager.State ts = TunnelManager.state();
         if (ts == TunnelManager.State.ONLINE) {
-            tunnelStatus.setText("● 隧道在线: " + TunnelManager.url()
-                    + ("subdomain".equals(TunnelManager.mode()) ? "（子域名）" : "（临时代理）"));
-            tunnelStatus.setTextColor(getColor(R.color.status_green));
+            String runMode = "subdomain".equals(TunnelManager.mode()) ? "子域名" : "临时代理";
+            String txt = "● 隧道在线: " + TunnelManager.url() + "（" + runMode + "）";
+            // unsaved-edit divergence warning: what the user sees in the form
+            // must be visibly reconciled against what is actually running
+            String uiMode = ((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).isChecked()
+                    ? "subdomain" : "temp";
+            String uiKey = aitunKeyInput.getText().toString().trim();
+            boolean modeDiffers = !uiMode.equals(TunnelManager.mode());
+            boolean keyDiffers = "subdomain".equals(TunnelManager.mode())
+                    && !uiKey.equals(TunnelManager.keyUsed());
+            if (modeDiffers || keyDiffers) {
+                txt += "\n⚠ 界面选项与运行中隧道不一致（运行中：" + runMode
+                        + "）。改动需停止隧道后重新启动才会生效";
+                tunnelStatus.setTextColor(getColor(R.color.dot_orange));
+            } else {
+                tunnelStatus.setTextColor(getColor(R.color.status_green));
+            }
+            tunnelStatus.setText(txt);
             btnTunnel.setText("停止隧道");
         } else if (ts == TunnelManager.State.CONNECTING) {
             tunnelStatus.setText("● 隧道连接中…");

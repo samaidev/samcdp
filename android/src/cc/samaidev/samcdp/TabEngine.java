@@ -392,7 +392,7 @@ public class TabEngine {
     }
 
     static void log(String line) {
-        android.util.Log.i("SamCDP", line);
+        android.util.Log.i("samcdp", line);
         ProfileManager.dispatchLog(line);
     }
 }

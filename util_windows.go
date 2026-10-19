@@ -84,7 +84,7 @@ func winToast(msg string) {
 				`$notify = New-Object System.Windows.Forms.NotifyIcon; ` +
 				`$notify.Icon = [System.Drawing.SystemIcons]::Information; ` +
 				`$notify.Visible = $true; ` +
-				`$notify.ShowBalloonTip(3000, 'CDP Client', '` + msg + `', [System.Windows.Forms.ToolTipIcon]::Info); ` +
+				`$notify.ShowBalloonTip(3000, 'samcdp', '` + msg + `', [System.Windows.Forms.ToolTipIcon]::Info); ` +
 				`Start-Sleep -Seconds 4; ` +
 				`$notify.Dispose()`)
 	}()

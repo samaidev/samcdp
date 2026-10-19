@@ -12,7 +12,7 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.1.4-debug.apk"
+APK_OUT="$OUT/SamCDP-android-v1.1.5-debug.apk"
 
 rm -rf "$OUT" gen classes
 mkdir -p "$OUT" gen classes "$OUT/dex"
@@ -23,7 +23,7 @@ echo "[1/6] aapt2 compile+link"
   -I "$PLAT/android.jar" \
   --manifest AndroidManifest.xml \
   --min-sdk-version 26 --target-sdk-version 34 \
-  --version-code 1 --version-name 1.0.0 \
+  --version-code 10 --version-name 1.1.5 \
   --java gen --auto-add-overlay "$OUT/res.zip"
 
 echo "[2/6] ecj compile"

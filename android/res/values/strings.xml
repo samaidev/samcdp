@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">CDP Client</string>
-    <string name="notif_channel">CDP Client Service</string>
-    <string name="notif_title">SamCDP running</string>
+    <string name="app_name">samcdp</string>
+    <string name="notif_channel">samcdp Service</string>
+    <string name="notif_title">samcdp running</string>
 </resources>

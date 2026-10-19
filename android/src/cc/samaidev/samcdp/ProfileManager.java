@@ -39,7 +39,7 @@ public class ProfileManager {
     public static void dispatchLog(String line) {
         String stamped = android.text.format.DateFormat.format("HH:mm:ss", System.currentTimeMillis())
                 + " " + line;
-        android.util.Log.i("SamCDP", line);
+        android.util.Log.i("samcdp", line);
         LogSink s = logSink;
         if (s != null) s.onLog(stamped);
     }

@@ -8,7 +8,7 @@ const settingsHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CDP Client 设置</title>
+<title>samcdp 设置</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -83,7 +83,7 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 </style>
 </head>
 <body>
-<h1>⚙️ CDP Client 设置</h1>
+<h1>⚙️ samcdp 设置</h1>
 
 <h2>远程地址</h2>
 <div class="url-box">

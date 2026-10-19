@@ -60,6 +60,10 @@ public class TunnelManager {
         return mode;
     }
 
+    public static String keyUsed() {
+        return keyUsed;
+    }
+
     private static void fire() {
         Listener l = listener;
         if (l != null) l.onTunnelChanged();
@@ -70,9 +74,17 @@ public class TunnelManager {
         mode = "subdomain".equals(tunnelMode) ? "subdomain" : "temp";
         keyUsed = key == null ? "" : key.trim();
         serverPort = port;
-        state = State.CONNECTING;
-        lastError = null;
         url = null;
+        lastError = null;
+        // hard rule: subdomain without key is refused, never silently downgraded to temp
+        if (mode.equals("subdomain") && keyUsed.isEmpty()) {
+            state = State.ERROR;
+            lastError = "子域名模式需要填入 aitun Key（留空请改选临时代理）";
+            fire();
+            ProfileManager.dispatchLog("[aitun] refused: subdomain mode without key");
+            return;
+        }
+        state = State.CONNECTING;
         fire();
 
         String bin = new File(ctx.getApplicationInfo().nativeLibraryDir, "libaitunclient.so")
@@ -85,9 +97,9 @@ public class TunnelManager {
         } catch (Exception ignored) {
         }
 
-        String[] cmd = keyUsed.isEmpty() || !mode.equals("subdomain")
-                ? new String[]{bin, "-p", String.valueOf(port), "-no-p2p"}
-                : new String[]{bin, "-k", keyUsed, "-p", String.valueOf(port), "-no-p2p"};
+        String[] cmd = mode.equals("subdomain")
+                ? new String[]{bin, "-k", keyUsed, "-p", String.valueOf(port), "-no-p2p"}
+                : new String[]{bin, "-p", String.valueOf(port), "-no-p2p"};
 
         // Go static binaries can't use Android DNS (no /etc/resolv.conf → falls back to ::1:53).
         // Resolve the server host once via Android's resolver and pass the IP via -s.
@@ -122,9 +134,28 @@ public class TunnelManager {
                         ProfileManager.dispatchLog("[aitun] " + line.trim());
                         Matcher m = P_URL.matcher(line);
                         if (m.find()) {
-                            url = m.group(1);
+                            String got = m.group(1);
+                            // sanity: returned URL style must match the requested mode,
+                            // otherwise the UI would claim one mode while serving another
+                            boolean looksSubdomain = got.matches("https://[A-Za-z0-9-]+\\.aitun\\.cc.*");
+                            boolean looksTemp = got.matches("https://aitun\\.cc/.+");
+                            boolean mismatch = (mode.equals("subdomain") && !looksSubdomain)
+                                    || (mode.equals("temp") && !looksTemp);
+                            if (mismatch) {
+                                lastError = "服务器返回与所选模式不符（选了"
+                                        + (mode.equals("subdomain") ? "子域名" : "临时代理")
+                                        + "，实际: " + got + "），已停止";
+                                state = State.ERROR;
+                                url = got;
+                                ProfileManager.dispatchLog("[aitun] mode mismatch: " + got);
+                                fire();
+                                Process pp = process;
+                                if (pp != null) pp.destroy();
+                                return;
+                            }
+                            url = got;
                             state = State.ONLINE;
-                            ProfileManager.dispatchLog("[aitun] ONLINE → " + url);
+                            ProfileManager.dispatchLog("[aitun] ONLINE (" + mode + ") → " + url);
                             fire();
                         }
                         Matcher e = P_ERR.matcher(line);

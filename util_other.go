@@ -40,7 +40,7 @@ func winToast(msg string) {
 	// macOS: 用 osascript 显示通知
 	if runtime.GOOS == "darwin" {
 		escaped := strings.ReplaceAll(msg, `"`, `\"`)
-		execCmd("osascript", "-e", `display notification "`+escaped+`" with title "CDP Client"`)
+		execCmd("osascript", "-e", `display notification "`+escaped+`" with title "samcdp"`)
 	}
 }
 

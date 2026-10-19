@@ -51,7 +51,7 @@ public abstract class BaseRunnerService extends Service {
         try {
             ctx.startService(i);
         } catch (Exception e) {
-            android.util.Log.w("SamCDP", "stopFromInside failed: " + e.getMessage());
+            android.util.Log.w("samcdp", "stopFromInside failed: " + e.getMessage());
         }
     }
 
@@ -64,7 +64,7 @@ public abstract class BaseRunnerService extends Service {
             try {
                 android.webkit.WebView.setDataDirectorySuffix("cdp" + slot());
             } catch (Exception e) {
-                android.util.Log.w("SamCDP", "suffix failed: " + e.getMessage());
+                android.util.Log.w("samcdp", "suffix failed: " + e.getMessage());
             }
         }
     }
@@ -106,7 +106,7 @@ public abstract class BaseRunnerService extends Service {
         Notification.Builder b = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(this, CHANNEL_ID + slot())
                 : new Notification.Builder(this);
-        b.setContentTitle("SamCDP · " + name)
+        b.setContentTitle("samcdp · " + name)
                 .setSmallIcon(R.drawable.ic_stat)
                 .setContentText("Isolated profile runner #" + slot() + " (own cookie jar)")
                 .setContentIntent(pOpen)
