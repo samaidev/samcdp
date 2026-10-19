@@ -32,6 +32,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
     private EditText aitunKeyInput, tokenInput;
     private LinearLayout profilesBox;
     private Button btnTunnel;
+    private TunnelManager.Listener tunnelListener;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private final StringBuilder logBuf = new StringBuilder();
     private final Runnable refresher = new Runnable() {
@@ -59,7 +60,9 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         btnTunnel = findViewById(R.id.btn_tunnel);
 
         ProfileManager.setLogSink(this);
-        TunnelManager.setListener(this::uiPostRender);
+        // addListener + onDestroy removeListener：不影响 CdpService 的通知刷新监听，也不随 Activity 重建而泄漏
+        tunnelListener = this::uiPostRender;
+        TunnelManager.addListener(tunnelListener);
 
         Prefs p = new Prefs(this);
         aitunKeyInput.setText(p.aitunKey());
@@ -71,6 +74,11 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         }
 
         findViewById(R.id.btn_copy).setOnClickListener(v -> {
+            // 隧道连接中还没有可用远程地址，复制局域网地址会造成误导
+            if (TunnelManager.state() == TunnelManager.State.CONNECTING) {
+                Toast.makeText(this, "隧道连接中，上线后即可复制远程地址", Toast.LENGTH_SHORT).show();
+                return;
+            }
             String s = remoteUrl.getText().toString();
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("url", s));
@@ -229,6 +237,15 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
     }
 
     @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (tunnelListener != null) {
+            TunnelManager.removeListener(tunnelListener);
+            tunnelListener = null;
+        }
+    }
+
+    @Override
     protected void onPause() {
         super.onPause();
         ui.removeCallbacks(refresher);
@@ -252,7 +269,20 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         boolean running = CdpService.isRunning();
         String lan = running ? "http://" + CdpService.localIp() + ":" + CdpService.api().port()
                 : "http://" + CdpService.detectIp() + ":" + p.port();
-        String remote = TunnelManager.state() == TunnelManager.State.ONLINE ? TunnelManager.url() : lan;
+        // 远程地址规则：隧道在线→显示临时代理/子域名地址；连接中→占位提示（绝不显示局域网地址）；
+        // 隧道未启用→显示局域网地址（此时它是唯一可达入口）
+        TunnelManager.State cur = TunnelManager.state();
+        String remote;
+        if (cur == TunnelManager.State.ONLINE) {
+            remote = TunnelManager.url();
+            remoteUrl.setTextColor(getColor(R.color.url_green));
+        } else if (cur == TunnelManager.State.CONNECTING) {
+            remote = "隧道连接中…（上线后显示临时代理/子域名地址）";
+            remoteUrl.setTextColor(getColor(R.color.text_dim));
+        } else {
+            remote = lan;
+            remoteUrl.setTextColor(getColor(R.color.url_green));
+        }
         remoteUrl.setText(remote);
 
         // status card (desktop parity: service running = 运行中)

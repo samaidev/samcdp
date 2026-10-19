@@ -89,9 +89,12 @@ public class CdpService extends Service {
     }
 
     private String notificationText() {
+        // 与设置页同规则：隧道在线→显示隧道地址；连接中→提示（不显示局域网地址）；未启用→局域网地址
         String lan = "http://" + localIp + ":" + new Prefs(this).port();
-        String remote = TunnelManager.url();
-        return remote != null ? remote + "  ·  " + lan : lan;
+        TunnelManager.State st = TunnelManager.state();
+        if (st == TunnelManager.State.ONLINE && TunnelManager.url() != null) return TunnelManager.url();
+        if (st == TunnelManager.State.CONNECTING) return "隧道连接中…（上线后显示临时代理/子域名地址）";
+        return lan;
     }
 
     private void startServer() {
@@ -103,7 +106,7 @@ public class CdpService extends Service {
         try {
             server.start();
             api = server;
-            TunnelManager.setListener(() -> runOnUiThreadToastFix());
+            TunnelManager.addListener(() -> runOnUiThreadToastFix());
             ProfileManager.dispatchLog("server listening on " + notificationText()
                     + "  (token " + prefs.token() + ")");
         } catch (Exception e) {

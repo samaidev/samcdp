@@ -194,12 +194,17 @@ function refreshStatus() {
       text.textContent = '已停止';
     }
 
+    // 远程地址规则：隧道在线→临时代理/子域名地址；隧道连接中→提示（不显示局域网地址）；
+    // 隧道未启用→本地地址（此时它是唯一可达入口）
     if (baseUrl) {
       urlEl.className = 'url';
       urlEl.textContent = baseUrl;
+    } else if (d.tunnel_running) {
+      urlEl.className = 'url empty';
+      urlEl.textContent = '隧道连接中…（上线后显示临时代理/子域名地址）';
     } else {
       urlEl.className = 'url empty';
-      urlEl.textContent = d.running ? '隧道连接中...' : '未启动';
+      urlEl.textContent = d.local_url || '未启动';
     }
 
     // Render profiles
@@ -243,5 +248,5 @@ refreshStatus();
 
 // renderSettingsHTML 渲染设置页面
 func renderSettingsHTML() string {
-	return settingsHTML
+        return settingsHTML
 }

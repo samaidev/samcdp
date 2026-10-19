@@ -42,12 +42,23 @@ public class TunnelManager {
     private static volatile String lastError;
     private static volatile String mode = "temp";
     private static volatile String keyUsed = "";
-    private static volatile Listener listener;
+    // multiple surfaces listen: MainActivity (UI) + CdpService (notification refresh)
+    private static final java.util.List<Listener> listeners =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
     private static volatile int serverPort = -1;
     private static Thread ioThread;
 
+    public static void addListener(Listener l) {
+        if (l != null) listeners.add(l);
+    }
+
+    public static void removeListener(Listener l) {
+        listeners.remove(l);
+    }
+
     public static void setListener(Listener l) {
-        listener = l;
+        listeners.clear();
+        addListener(l);
     }
 
     public static State state() {
@@ -71,8 +82,12 @@ public class TunnelManager {
     }
 
     private static void fire() {
-        Listener l = listener;
-        if (l != null) l.onTunnelChanged();
+        for (Listener l : listeners) {
+            try {
+                l.onTunnelChanged();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     public static synchronized void start(Context ctx, String tunnelMode, String key, int port) {

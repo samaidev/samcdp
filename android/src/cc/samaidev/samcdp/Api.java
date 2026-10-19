@@ -79,7 +79,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.1.6");
+            o.put("version", "1.1.7");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -87,13 +87,17 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.1.6");
+            o.put("version", "1.1.7");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
             JSONObject t = new JSONObject(TunnelManager.statusJson());
+            // 远程地址规则与 UI 一致：在线→隧道地址；连接中→null（不给局域网地址造成误导）；
+            // 未启用→局域网地址（唯一可达入口）
             if (TunnelManager.state() == TunnelManager.State.ONLINE) {
                 o.put("remote_url", t.optString("url"));
+            } else if (TunnelManager.state() == TunnelManager.State.CONNECTING) {
+                o.put("remote_url", JSONObject.NULL);
             } else {
                 o.put("remote_url", "http://" + CdpService.localIp() + ":" + port());
             }
@@ -300,9 +304,19 @@ public class Api extends HttpServer {
     // ------------------------------------------------------------------ docs page (desktop style)
 
     private String docsPage() {
-        String remote = TunnelManager.state() == TunnelManager.State.ONLINE
-                ? TunnelManager.url()
-                : "http://" + CdpService.localIp() + ":" + port();
+        String lan = "http://" + CdpService.localIp() + ":" + port();
+        // 与 UI 同规则：在线→隧道地址；连接中→占位提示；未启用→局域网地址
+        String remote;
+        if (TunnelManager.state() == TunnelManager.State.ONLINE) {
+            remote = TunnelManager.url();
+        } else if (TunnelManager.state() == TunnelManager.State.CONNECTING) {
+            remote = "隧道连接中…（上线后显示临时代理/子域名地址）";
+        } else {
+            remote = lan;
+        }
+        // curl 示例始终用实际可达地址（在线时即隧道地址）
+        String exampleBase = TunnelManager.state() == TunnelManager.State.ONLINE
+                ? TunnelManager.url() : lan;
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"UTF-8\">");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
@@ -314,7 +328,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.1.6</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.1.7</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");
@@ -337,7 +351,7 @@ public class Api extends HttpServer {
         row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", "CDP 风格透传");
         sb.append("</table>");
         sb.append("<h2>示例</h2>");
-        sb.append("<code>curl -X POST \"").append(remote).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code>");
+        sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code>");
         sb.append("<p class=\"muted\">鉴权: ?token= 或 Authorization: Bearer · 每 Profile 运行在独立进程，Cookie 完全隔离 · ")
                 .append("SamAI Group</p></body></html>");
         return sb.toString();
