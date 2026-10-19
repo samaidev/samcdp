@@ -19,6 +19,7 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:allowBackup="false"
+        android:debuggable="true"
         android:extractNativeLibs="true">
 
         <activity

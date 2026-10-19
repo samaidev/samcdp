@@ -132,6 +132,27 @@ public class Api extends HttpServer {
             return json(200, new JSONObject(TunnelManager.statusJson()));
         }
 
+        if (path.equals("/api/profiles/add") && req.method.equals("POST")) {
+            String name = req.query.get("name");
+            if (name == null || !name.matches("[a-zA-Z0-9_-]{1,32}")) {
+                return err(400, "name required (a-zA-Z0-9_-, max 32)");
+            }
+            if (ProfileManager.find(name) != null) return err(409, "profile already exists: " + name);
+            if (ProfileManager.profiles().size() >= ProfileManager.MAX_PROFILES) {
+                return err(409, "max " + ProfileManager.MAX_PROFILES + " profiles (one process each)");
+            }
+            int port = 9334 + ProfileManager.profiles().size();
+            try {
+                port = Integer.parseInt(req.query.getOrDefault("port", String.valueOf(port)));
+            } catch (Exception ignored) {
+            }
+            Profile np = new Profile(name, port, true);
+            ProfileManager.profiles().add(np);
+            ProfileManager.saveProfiles();
+            ProfileManager.dispatchLog("[config] profile added via API: " + name + " (port " + port + ")");
+            return json(200, np.toJson(0));
+        }
+
         if (path.equals("/api/profiles") && req.method.equals("GET")) {
             JSONObject o = ok();
             JSONArray arr = new JSONArray();
@@ -155,6 +176,14 @@ public class Api extends HttpServer {
             String name = Api.urlSegment(seg, 3);
             Profile p = name == null ? null : ProfileManager.find(name);
             if (p == null) return err(404, "profile not found: " + name);
+
+            if (seg.length == 4 && req.method.equals("DELETE")) {
+                ProfileManager.stop(CdpService.appContext(), p);
+                ProfileManager.profiles().remove(p);
+                ProfileManager.saveProfiles();
+                ProfileManager.dispatchLog("[config] profile deleted via API: " + p.name);
+                return json(200, ok());
+            }
 
             if (seg.length == 5 && seg[4].equals("start") && req.method.equals("POST")) {
                 int duration = 30;
