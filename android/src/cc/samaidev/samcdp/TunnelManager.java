@@ -29,6 +29,12 @@ public class TunnelManager {
 
     private static final Pattern P_URL = Pattern.compile("\\[OK\\]\\s+(?:Proxy URL|Subdomain mode):\\s+(\\S+)");
     private static final Pattern P_ERR = Pattern.compile("^\\s*Error:\\s+(.+)$");
+    private static final Pattern P_ERR2 = Pattern.compile("\\[Error\\]\\s+(.+)$");
+
+    // last-resort server IP if both system resolver and DoH fail (verified 2025-10-19)
+    private static final String SERVER_HOST = "aitun.cc";
+    private static final String SERVER_FALLBACK_IP = "43.160.208.156";
+    private static final String DOH_ENDPOINT = "https://223.5.5.5/resolve?name=";
 
     private static volatile Process process;
     private static volatile State state = State.STOPPED;
@@ -102,24 +108,41 @@ public class TunnelManager {
                 : new String[]{bin, "-p", String.valueOf(port), "-no-p2p"};
 
         // Go static binaries can't use Android DNS (no /etc/resolv.conf → falls back to ::1:53).
-        // Resolve the server host once via Android's resolver and pass the IP via -s.
+        // Resolve the server host once via a 3-step chain and pass the IP via -s:
+        //   1) system resolver  2) AliDNS DoH over IP (survives broken LAN DNS)
+        //   3) hardcoded fallback IP (verified 2025-10-19)
         String[] cmdF = cmd;
+        String serverIp = null;
         try {
-            java.net.InetAddress ip = java.net.InetAddress.getByName("aitun.cc");
-            String serverIp = ip.getHostAddress();
+            serverIp = java.net.InetAddress.getByName(SERVER_HOST).getHostAddress();
+            ProfileManager.dispatchLog("[aitun] server resolved via system DNS: " + serverIp);
+        } catch (Exception e) {
+            ProfileManager.dispatchLog("[aitun] system DNS failed: " + e.getMessage());
+        }
+        if (serverIp == null || !serverIp.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+            serverIp = dohResolve(SERVER_HOST);
+            if (serverIp != null)
+                ProfileManager.dispatchLog("[aitun] server resolved via DoH(223.5.5.5): " + serverIp);
+        }
+        if (serverIp == null) {
+            serverIp = SERVER_FALLBACK_IP;
+            ProfileManager.dispatchLog("[aitun] DNS unavailable, using fallback IP: " + serverIp);
+        }
+        try {
             String[] cmd2 = new String[cmd.length + 2];
             cmd2[0] = cmd[0];
             cmd2[1] = "-s";
             cmd2[2] = serverIp + ":6639";
             System.arraycopy(cmd, 1, cmd2, 3, cmd.length - 1);
             cmdF = cmd2;
-            ProfileManager.dispatchLog("[aitun] server resolved to " + serverIp);
         } catch (Exception e) {
-            ProfileManager.dispatchLog("[aitun] DNS resolve failed, using hostname: " + e.getMessage());
+            ProfileManager.dispatchLog("[aitun] -s param failed, using hostname: " + e.getMessage());
         }
         final String[] finalCmd = cmdF;
 
         Thread t = new Thread(() -> {
+            int consecutiveErrors = 0;
+            boolean everOnline = false;
             for (int attempt = 1; attempt <= 4; attempt++) {
                 try {
                     ProcessBuilder pb = new ProcessBuilder(finalCmd);
@@ -155,8 +178,26 @@ public class TunnelManager {
                             }
                             url = got;
                             state = State.ONLINE;
+                            everOnline = true;
+                            consecutiveErrors = 0;
                             ProfileManager.dispatchLog("[aitun] ONLINE (" + mode + ") → " + url);
                             fire();
+                        }
+                        Matcher e2 = P_ERR2.matcher(line);
+                        if (e2.find() && state != State.ONLINE) {
+                            lastError = e2.group(1).trim();
+                            consecutiveErrors++;
+                            fire(); // stay CONNECTING but let the UI surface the last error
+                            // never-online client retrying forever = eternal spinner; give up
+                            if (!everOnline && consecutiveErrors >= 3) {
+                                ProfileManager.dispatchLog("[aitun] giving up after "
+                                        + consecutiveErrors + " consecutive errors");
+                                state = State.ERROR;
+                                fire();
+                                Process pp = process;
+                                if (pp != null) pp.destroy();
+                                return;
+                            }
                         }
                         Matcher e = P_ERR.matcher(line);
                         if (e.find()) {
@@ -219,6 +260,36 @@ public class TunnelManager {
         } catch (Exception e) {
             return "{\"ok\":false}";
         }
+    }
+
+    /** AliDNS DoH JSON API over bare IP — works even when the LAN DNS is broken. */
+    private static String dohResolve(String host) {
+        try {
+            java.net.URL u = new java.net.URL(DOH_ENDPOINT + host + "&type=A");
+            javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection) u.openConnection();
+            c.setConnectTimeout(4000);
+            c.setReadTimeout(4000);
+            try (java.io.InputStream in = c.getInputStream()) {
+                java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) bo.write(buf, 0, n);
+                JSONObject o = new JSONObject(bo.toString("UTF-8"));
+                org.json.JSONArray ans = o.optJSONArray("Answer");
+                if (ans != null) {
+                    for (int i = 0; i < ans.length(); i++) {
+                        JSONObject a = ans.optJSONObject(i);
+                        if (a != null && a.optInt("type") == 1) {
+                            String ip = a.optString("data");
+                            if (ip.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) return ip;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            ProfileManager.dispatchLog("[aitun] DoH failed: " + e.getMessage());
+        }
+        return null;
     }
 
     private static void deleteR(File f) {

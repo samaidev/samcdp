@@ -287,7 +287,11 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             tunnelStatus.setText(txt);
             btnTunnel.setText("停止隧道");
         } else if (ts == TunnelManager.State.CONNECTING) {
-            tunnelStatus.setText("● 隧道连接中…");
+            String connecting = "● 隧道连接中…";
+            if (TunnelManager.lastError() != null) {
+                connecting += "（上次错误: " + TunnelManager.lastError() + "）";
+            }
+            tunnelStatus.setText(connecting);
             tunnelStatus.setTextColor(getColor(R.color.dot_orange));
             btnTunnel.setText("停止隧道");
         } else if (ts == TunnelManager.State.ERROR) {
