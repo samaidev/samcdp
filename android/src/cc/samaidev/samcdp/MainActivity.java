@@ -249,13 +249,13 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         String remote = TunnelManager.state() == TunnelManager.State.ONLINE ? TunnelManager.url() : lan;
         remoteUrl.setText(remote);
 
-        // status card
+        // status card (desktop parity: service running = 运行中)
         List<Profile> list = ProfileManager.profiles();
         int runningCount = 0;
         for (Profile pr : list) if (pr.running) runningCount++;
-        boolean up = running && (runningCount > 0 || TunnelManager.state() == TunnelManager.State.ONLINE);
+        boolean up = running;
         dot.setBackgroundResource(up ? R.drawable.dot_green : R.drawable.dot_red);
-        statusText.setText(up ? "运行中（" + Math.max(runningCount, 0) + " profiles）" : "已停止");
+        statusText.setText(up ? "运行中（" + runningCount + " profiles）" : "已停止");
         statusText.setTextColor(getColor(up ? R.color.status_green : R.color.text_dim));
 
         // tunnel line
@@ -346,6 +346,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
 
         Button del = new Button(this);
         del.setText("删除");
+        del.setAllCaps(false);
         del.setTextSize(12);
         del.setTextColor(getColor(R.color.danger));
         del.setBackground(getDrawable(R.drawable.btn_delete));
