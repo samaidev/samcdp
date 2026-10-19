@@ -89,6 +89,22 @@ public class TunnelManager {
                 ? new String[]{bin, "-p", String.valueOf(port), "-no-p2p"}
                 : new String[]{bin, "-k", keyUsed, "-p", String.valueOf(port), "-no-p2p"};
 
+        // Go static binaries can't use Android DNS (no /etc/resolv.conf → falls back to ::1:53).
+        // Resolve the server host once via Android's resolver and pass the IP via -s.
+        try {
+            java.net.InetAddress ip = java.net.InetAddress.getByName("aitun.cc");
+            String serverIp = ip.getHostAddress();
+            String[] cmd2 = new String[cmd.length + 2];
+            cmd2[0] = cmd[0];
+            cmd2[1] = "-s";
+            cmd2[2] = serverIp + ":6639";
+            System.arraycopy(cmd, 1, cmd2, 3, cmd.length - 1);
+            cmd = cmd2;
+            ProfileManager.dispatchLog("[aitun] server resolved to " + serverIp);
+        } catch (Exception e) {
+            ProfileManager.dispatchLog("[aitun] DNS resolve failed, using hostname: " + e.getMessage());
+        }
+
         Thread t = new Thread(() -> {
             for (int attempt = 1; attempt <= 4; attempt++) {
                 try {
