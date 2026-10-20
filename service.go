@@ -62,8 +62,9 @@ func (s *Service) Start() error {
 	// 1.5 启动前清理：杀掉所有旧 Chrome 进程，防止窗口堆积
 	cleanupAllChrome()
 
-	// 2. 启动 CDP 路由代理（端口 9333）
-	addr, err := cdpProxy.Start(fmt.Sprintf("127.0.0.1:%d", s.proxyPort))
+	// 2. 启动 CDP 路由代理（端口 9333，绑定所有网卡：局域网地址作为隧道不可用时的备用入口）
+	//    /api/* 有 token 鉴权；CDP 透传路径与隧道侧暴露面一致（产品设计如此）
+	addr, err := cdpProxy.Start(fmt.Sprintf("0.0.0.0:%d", s.proxyPort))
 	if err != nil {
 		return fmt.Errorf("start cdp proxy on port %d: %w", s.proxyPort, err)
 	}
