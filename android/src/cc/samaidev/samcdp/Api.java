@@ -79,7 +79,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.1.8");
+            o.put("version", "1.2.1");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -87,7 +87,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.1.8");
+            o.put("version", "1.2.1");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -214,6 +214,18 @@ public class Api extends HttpServer {
                 return json(200, ok());
             }
 
+            if (seg.length == 5 && seg[4].equals("show") && req.method.equals("POST")) {
+                return toResp(ProfileManager.show(p, req.query.get("tab")));
+            }
+
+            if (seg.length == 5 && seg[4].equals("hide") && req.method.equals("POST")) {
+                return toResp(ProfileManager.hide(p));
+            }
+
+            if (seg.length == 5 && seg[4].equals("visible") && req.method.equals("GET")) {
+                return toResp(ProfileManager.visible(p));
+            }
+
             if (seg.length == 5 && seg[4].equals("tabs") && req.method.equals("GET")) {
                 return toResp(ProfileManager.tabs(p));
             }
@@ -257,9 +269,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.1.6");
+                    o.put("Browser", "samcdp-webview/1.2.1");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.1.6 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.2.1 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -328,7 +340,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.1.8</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.2.1</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");
@@ -343,6 +355,9 @@ public class Api extends HttpServer {
         row(sb, "GET", "/api/profiles?token=xxx", "列出 Profile");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", "启动（独立进程 Cookie 池）");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", "停止（Cookie 持久化）");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/show?tab=ID&amp;token=xxx", "全屏显示 WebView（人工接管：验证码/登录）");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/hide?token=xxx", "隐藏 WebView（回到无头模式）");
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/visible?token=xxx", "WebView 可见状态");
         row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&ua=AGENT&token=xxx", "打开标签页");
         row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "关闭标签页");

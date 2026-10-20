@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="cc.samaidev.samcdp"
-    android:versionCode="14"
-    android:versionName="1.2.0">
+    android:versionCode="15"
+    android:versionName="1.2.1">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -36,6 +36,14 @@
             android:name=".CdpService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- Full-screen WebView host (human handover) — one per runner process -->
+        <activity android:name=".TabActivity1" android:exported="false" android:process=":cdp1" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
+        <activity android:name=".TabActivity2" android:exported="false" android:process=":cdp2" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
+        <activity android:name=".TabActivity3" android:exported="false" android:process=":cdp3" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
+        <activity android:name=".TabActivity4" android:exported="false" android:process=":cdp4" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
+        <activity android:name=".TabActivity5" android:exported="false" android:process=":cdp5" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
+        <activity android:name=".TabActivity6" android:exported="false" android:process=":cdp6" android:launchMode="singleTask" android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize" />
 
         <!-- One dedicated process per profile = isolated WebView data dir + cookie jar -->
         <service android:name=".RunnerService1" android:exported="false" android:process=":cdp1" android:foregroundServiceType="dataSync" />

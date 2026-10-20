@@ -55,6 +55,11 @@ public abstract class BaseRunnerService extends Service {
         }
     }
 
+    /** Class of the runner service currently alive in THIS process (for TabActivity lookup). */
+    static Class<?> activeRunnerClass() {
+        return activeClass;
+    }
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -223,6 +228,13 @@ public abstract class BaseRunnerService extends Service {
                 payload = TabEngine.eval(seg[2], js).getBytes(StandardCharsets.UTF_8);
             } else if (seg.length == 3 && seg[1].equals("tabs") && method.equals("DELETE")) {
                 payload = TabEngine.closeTab(seg[2]).getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/show") && method.equals("POST")) {
+                payload = TabEngine.showTab(getApplicationContext(), query.get("tab"))
+                        .getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/hide") && method.equals("POST")) {
+                payload = TabEngine.hide().getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/visible") && method.equals("GET")) {
+                payload = TabEngine.visibleJson().getBytes(StandardCharsets.UTF_8);
             } else {
                 payload = "{\"ok\":false,\"error\":\"not found\"}".getBytes(StandardCharsets.UTF_8);
             }

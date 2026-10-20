@@ -242,6 +242,22 @@ public class ProfileManager {
         return proxy(p, "GET", "/tabs/" + id + "/screenshot", null);
     }
 
+    /** Show a tab's WebView full-screen on the phone for human handover (CAPTCHA/login). */
+    public static ProxyResult show(Profile p, String tabId) {
+        String q = tabId != null && !tabId.isEmpty() ? "?tab=" + urlencode(tabId) : "";
+        return proxy(p, "POST", "/show" + q, null);
+    }
+
+    /** Hide the visible WebView and return the tab to headless mode. */
+    public static ProxyResult hide(Profile p) {
+        return proxy(p, "POST", "/hide", null);
+    }
+
+    /** Visibility state of the profile's WebView. */
+    public static ProxyResult visible(Profile p) {
+        return proxy(p, "GET", "/visible", null);
+    }
+
     public static String urlencode(String s) {
         try {
             return java.net.URLEncoder.encode(s, "UTF-8");

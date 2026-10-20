@@ -11,6 +11,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebResourceRequest;
+import android.view.ViewGroup;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -108,6 +109,11 @@ public class TabEngine {
     private static long autoStopAtMs;
     private static Runnable durationTimer;
 
+    // ------------------------------------------------------------ visibility (human handover)
+
+    private static volatile android.app.Activity visibleHost;
+    private static volatile String visibleTabId;
+
     static class TabItem {
         final String id;
         volatile String url;
@@ -142,6 +148,8 @@ public class TabEngine {
     }
 
     static void stop(Context ctx) {
+        // close any full-screen host BEFORE destroying the WebViews underneath it
+        detach();
         if (durationTimer != null) {
             MAIN.removeCallbacks(durationTimer);
             durationTimer = null;
@@ -364,6 +372,152 @@ public class TabEngine {
             }
         });
         return holder[0] == null ? null : holder[0].toByteArray();
+    }
+
+    // ------------------------------------------------------------ visibility (human handover)
+
+    /**
+     * Open (or re-target) the full-screen TabActivity that shows a tab's WebView
+     * to a human — for CAPTCHA / login / 2FA / consent handover.
+     * Called from the runner's local tab API: POST /show?tab=<id>.
+     */
+    static String showTab(Context ctx, String tabId) {
+        try {
+            List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+            if (tabs == null || tabs.isEmpty()) return err("no tabs open in this profile");
+            TabItem target = null;
+            if (tabId != null && !tabId.isEmpty()) {
+                for (TabItem t : tabs) if (t.id.equals(tabId) || t.id.startsWith(tabId)) target = t;
+                if (target == null) return err("tab not found: " + tabId);
+            } else {
+                target = tabs.get(0);
+                for (TabItem t : tabs) if (t.openedAtMs > target.openedAtMs) target = t;
+            }
+            if (target.webView == null) return err("tab has no webview yet");
+            String tid = target.id;
+
+            // already visible with the same tab? nothing to do
+            if (visibleHost != null && tid.equals(visibleTabId)) {
+                return new JSONObject().put("ok", true).put("visible", true)
+                        .put("tab", tid).put("profile", profileName).toString();
+            }
+
+            Class<?> svc = BaseRunnerService.activeRunnerClass();
+            if (svc == null) return err("runner service class unknown");
+            String actCls = svc.getName().replace("RunnerService", "TabActivity");
+            android.content.Intent i = new android.content.Intent(ctx, Class.forName(actCls));
+            i.putExtra("tab", tid);
+            i.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("visible", true);
+            o.put("tab", tid);
+            o.put("profile", profileName);
+            return o.toString();
+        } catch (Exception e) {
+            return err("show failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * TabActivity.onCreate -> attach the requested (or newest) tab's WebView
+     * to the activity's full-screen root. Returns null on success, else an error hint.
+     * MUST run on the runner process main thread (Activity lifecycle guarantees it).
+     */
+    static String attachRequested(android.app.Activity host, ViewGroup root, String want) {
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        if (tabs == null || tabs.isEmpty()) return "no tabs";
+        TabItem target = null;
+        if (want != null && !want.isEmpty()) {
+            for (TabItem t : tabs) if (t.id.equals(want) || t.id.startsWith(want)) target = t;
+        }
+        if (target == null) {
+            target = tabs.get(0);
+            for (TabItem t : tabs) if (t.openedAtMs > target.openedAtMs) target = t;
+        }
+        if (target.webView == null) return "tab has no webview";
+        final TabItem t = target;
+
+        // if another tab's WebView is still attached somewhere, free it first
+        detachAttached();
+
+        try {
+            root.addView(t.webView, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            t.webView.onResume();
+        } catch (Exception e) {
+            return "attach failed: " + e.getMessage();
+        }
+        visibleHost = host;
+        visibleTabId = t.id;
+        log("[" + profileName + "] webview visible (human handover), tab " + t.id);
+        return null;
+    }
+
+    /** Close the visible host (if any) and put the WebView back to headless mode. */
+    static String hide() {
+        android.app.Activity host = visibleHost;
+        if (host == null) {
+            return "{\"ok\":true,\"visible\":false}";
+        }
+        try {
+            host.finish();
+        } catch (Exception ignored) {
+        }
+        return "{\"ok\":true,\"visible\":false}";
+    }
+
+    /** Activity.onDestroy -> full detach: finish-safe, idempotent. */
+    static void detach() {
+        android.app.Activity host = visibleHost;
+        visibleHost = null;
+        if (host != null && !host.isFinishing()) {
+            try {
+                host.finish();
+            } catch (Exception ignored) {
+            }
+        }
+        detachAttached();
+    }
+
+    /** Remove the attached WebView (if any) and restore headless 412x915 layout. */
+    private static void detachAttached() {
+        String tid = visibleTabId;
+        visibleTabId = null;
+        if (tid == null || profileName == null) return;
+        List<TabItem> tabs = TABS.get(profileName);
+        if (tabs == null) return;
+        for (TabItem t : tabs) {
+            if (t.id.equals(tid) && t.webView != null) {
+                final WebView wv = t.webView;
+                runAndWait(() -> {
+                    try {
+                        ViewGroup parent = (ViewGroup) wv.getParent();
+                        if (parent != null) parent.removeView(wv);
+                        wv.onPause();
+                        wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(TAB_W, android.view.View.MeasureSpec.EXACTLY),
+                                android.view.View.MeasureSpec.makeMeasureSpec(TAB_H, android.view.View.MeasureSpec.EXACTLY));
+                        wv.layout(0, 0, TAB_W, TAB_H);
+                    } catch (Exception ignored) {
+                    }
+                });
+            }
+        }
+    }
+
+    static String visibleJson() {
+        try {
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("visible", visibleHost != null && visibleTabId != null);
+            o.put("tab", visibleTabId == null ? JSONObject.NULL : visibleTabId);
+            if (profileName != null) o.put("profile", profileName);
+            return o.toString();
+        } catch (Exception e) {
+            return "{\"ok\":false}";
+        }
     }
 
     // ------------------------------------------------------------ cookies (per-process jar = true isolation)
