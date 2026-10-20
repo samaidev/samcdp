@@ -67,22 +67,24 @@ public class TabActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // floating switcher pill (profile name + switch glyph), top-left overlay
+        float den = getResources().getDisplayMetrics().density;
         pill = new TextView(this);
         pill.setTextSize(12);
         pill.setTypeface(Typeface.DEFAULT_BOLD);
         pill.setTextColor(0xFFFFFFFF);
         pill.setSingleLine(true);
         pill.setGravity(Gravity.CENTER);
-        pill.setPadding(28, 14, 28, 14);
+        int padH = Math.round(14 * den), padV = Math.round(8 * den);
+        pill.setPadding(padH, padV, padH, padV);
         GradientDrawable bg = new GradientDrawable();
         bg.setColor(0xAA000000);
-        bg.setCornerRadius(40);
+        bg.setCornerRadius(20 * den);
         pill.setBackground(bg);
         FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         plp.gravity = Gravity.TOP | Gravity.START;
-        plp.leftMargin = 24;
-        plp.topMargin = 24;
+        plp.leftMargin = Math.round(10 * den);
+        plp.topMargin = Math.round(10 * den);
         pill.setLayoutParams(plp);
         pill.setOnClickListener(v -> openSwitcher());
         String pn = TabEngine.profileName();

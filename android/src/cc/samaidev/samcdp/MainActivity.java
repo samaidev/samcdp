@@ -349,9 +349,10 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         for (int i = 0; i < profilesBox.getChildCount() && i < list.size(); i++) {
             Profile pr = list.get(i);
             LinearLayout row = (LinearLayout) profilesBox.getChildAt(i);
+            // row layout: [0]=info [1]=show [2]=delete [3]=switch
             TextView info = (TextView) row.getChildAt(0);
-            Button del = (Button) row.getChildAt(1);
-            Switch sw = (Switch) row.getChildAt(2);
+            Button del = (Button) row.getChildAt(2);
+            Switch sw = (Switch) row.getChildAt(3);
             String state;
             if (pr.running) {
                 String extra = pr.autoStopAtMs > 0
