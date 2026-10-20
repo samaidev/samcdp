@@ -170,16 +170,18 @@ func onTrayReady() {
 				winToast(t("toast.notRunning"))
 				return
 			}
-			// 单隧道只有一个地址
-			url := svc.GetRemoteAddress()
-			if url == "" {
-				winToast(t("toast.notRunning"))
+			// 地址规则与设置页一致：隧道在线→隧道地址；否则→局域网地址（唯一可达入口）
+			addr := svc.GetCopyAddress()
+			if token := svc.GetToken(); token != "" {
+				addr += "?token=" + token
+			}
+			if err := copyToClipboard(addr); err != nil {
+				debugLog("[tray] copy failed: " + err.Error())
+				winToast(t("toast.copyFailed") + err.Error())
 				return
 			}
-			token := svc.GetToken()
-			addr := url + "?token=" + token
-			copyToClipboard(addr)
-			winToast(t("toast.copied"))
+			debugLog("[tray] copied: " + addr)
+			winToast(t("toast.copied") + " " + addr)
 		}()
 	})
 

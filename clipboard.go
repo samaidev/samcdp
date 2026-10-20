@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -28,16 +29,30 @@ func winCopyClipboard(text string) error {
 }
 
 func macCopyClipboard(text string) error {
-	// 优先用 pbcopy
-	err := execCommandStdin("pbcopy", text)
-	if err != nil {
-		debugLog(fmt.Sprintf("[clipboard] pbcopy failed: %v, trying osascript", err))
-		// 备选方案：用 osascript
-		escaped := strings.ReplaceAll(text, `\`, `\\`)
-		escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-		return execCommand("osascript", "-e", `set the clipboard to "`+escaped+`"`)
+	// 绝对路径优先：GUI/launchd 环境可能 PATH 不全导致 exec "pbcopy" 失败
+	err := execCommandStdin("/usr/bin/pbcopy", text)
+	if err == nil {
+		debugLog(fmt.Sprintf("[clipboard] /usr/bin/pbcopy OK (%d bytes)", len(text)))
+		return nil
 	}
-	debugLog("[clipboard] pbcopy OK")
+	debugLog(fmt.Sprintf("[clipboard] /usr/bin/pbcopy failed: %v", err))
+	// 回退 1：按 PATH 查找 pbcopy
+	if p, lookErr := exec.LookPath("pbcopy"); lookErr == nil && p != "/usr/bin/pbcopy" {
+		if err2 := execCommandStdin(p, text); err2 == nil {
+			debugLog("[clipboard] pbcopy(PATH) OK")
+			return nil
+		} else {
+			err = err2
+		}
+	}
+	// 回退 2：osascript（同样用绝对路径）
+	escaped := strings.ReplaceAll(text, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	if err2 := execCommand("/usr/bin/osascript", "-e", `set the clipboard to "`+escaped+`"`); err2 != nil {
+		debugLog(fmt.Sprintf("[clipboard] all methods failed: pbcopy=%v osascript=%v", err, err2))
+		return fmt.Errorf("pbcopy: %v; osascript: %v", err, err2)
+	}
+	debugLog("[clipboard] osascript OK")
 	return nil
 }
 

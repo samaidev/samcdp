@@ -361,6 +361,38 @@ func (s *Service) GetRemoteAddress() string {
 	return tunnel.GetPublicURL()
 }
 
+// GetCopyAddress 返回托盘"复制地址"用的可达地址（与设置页显示规则同源）：
+// 隧道在线 → 隧道公网地址；否则 → 局域网地址（此时它是唯一可达入口）
+func (s *Service) GetCopyAddress() string {
+	if tunnel.IsRunning() {
+		if u := tunnel.GetPublicURL(); u != "" {
+			return u
+		}
+	}
+	return s.GetLocalAddress()
+}
+
+// GetLocalAddress 返回局域网可达地址（探测默认路由出口 IP，失败回退 127.0.0.1）
+func (s *Service) GetLocalAddress() string {
+	if ip := outboundIP(); ip != "" {
+		return fmt.Sprintf("http://%s:%d", ip, s.proxyPort)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", s.proxyPort)
+}
+
+// outboundIP 通过 UDP connect 探测出口 IP（不实际发包，无副作用）
+func outboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+	if addr, ok := conn.LocalAddr().(*net.UDPAddr); ok && !addr.IP.IsLoopback() {
+		return addr.IP.String()
+	}
+	return ""
+}
+
 // GetToken 返回鉴权 token
 func (s *Service) GetToken() string {
 	return cfg.GetAuthToken()

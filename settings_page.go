@@ -121,6 +121,7 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 
 <script>
 var baseUrl = '';
+var copyableUrl = '';
 
 function saveSettings() {
   var key = document.getElementById('aitunKey').value.trim();
@@ -166,9 +167,9 @@ function toggleProfile(name, enabled) {
 }
 
 function copyRemoteUrl() {
-  if (!baseUrl) { showToast('地址未就绪'); return; }
+  if (!copyableUrl) { showToast('地址未就绪'); return; }
   var token = document.getElementById('tokenValue').value;
-  var url = baseUrl + '?token=' + token;
+  var url = copyableUrl + (token && token != '-' ? '?token=' + token : '');
   navigator.clipboard.writeText(url).then(function(){ showToast('已复制: ' + url); });
 }
 
@@ -197,9 +198,11 @@ function refreshStatus() {
     // 远程地址规则：隧道在线→临时代理/子域名地址；隧道连接中→提示（不显示局域网地址）；
     // 隧道未启用→本地地址（此时它是唯一可达入口）
     if (baseUrl) {
+      copyableUrl = baseUrl;
       urlEl.className = 'url';
       urlEl.textContent = baseUrl;
     } else if (d.tunnel_running) {
+      copyableUrl = '';
       urlEl.className = 'url empty';
       urlEl.textContent = '隧道连接中…（上线后显示临时代理/子域名地址）';
     } else {
@@ -248,5 +251,5 @@ refreshStatus();
 
 // renderSettingsHTML 渲染设置页面
 func renderSettingsHTML() string {
-        return settingsHTML
+	return settingsHTML
 }
