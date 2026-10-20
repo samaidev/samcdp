@@ -1,6 +1,8 @@
 package main
 
 // settings_page.go — 本地设置页面（仅本地 127.0.0.1 访问，管理配置）
+// 布局参考 Android APK 设置页：远程地址(隧道)卡片在上、局域网地址在下方、
+// 隧道状态与错误实时显示、Key 决定模式（填写=子域名，留空=临时代理）
 // 远程 API 文档页面在 proxy_docs.go 中
 
 const settingsHTML = `<!DOCTYPE html>
@@ -32,6 +34,14 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 }
 .url-box .url { color: #2e7d32; font-size: 14px; word-break: break-all; font-family: monospace; }
 .url-box .url.empty { color: #a0826d; }
+.url-box .url.connecting { color: #d2610f; }
+.url-box.muted { background: #fffdf8; border-style: dashed; }
+.url-box.muted .url { color: #8b6914; font-size: 13px; }
+.url-box.muted .url.empty { color: #c9b8a8; }
+.error-line {
+  display: none; margin-top: 8px; padding: 8px 12px; border-radius: 8px;
+  background: #fdecea; border: 1px solid #ef9a9a; color: #c62828; font-size: 12px; word-break: break-all;
+}
 .btn {
   padding: 8px 20px; border: none; border-radius: 8px; cursor: pointer;
   font-size: 13px; font-weight: 600; transition: all .15s;
@@ -47,9 +57,14 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
   margin-top: 4px; padding: 12px; border-radius: 8px; background: #fffaf0;
   border: 1px solid #deb887; display: flex; align-items: center; gap: 8px;
 }
-.status-dot { width: 10px; height: 10px; border-radius: 50%; }
+.status-bar + .status-bar { margin-top: 8px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .status-dot.running { background: #4caf50; box-shadow: 0 0 8px #4caf50; }
-.status-dot.stopped { background: #f44336; }
+.status-dot.connecting { background: #ff8c00; animation: pulse 1.2s ease-in-out infinite; }
+.status-dot.off { background: #c9b8a8; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.mode-line { margin-top: 8px; font-size: 12px; color: #8b6914; }
+.mode-line b { color: #d2610f; }
 .profile-card {
   padding: 14px; margin-bottom: 10px; border-radius: 10px; background: #fffaf0;
   border: 1px solid #deb887; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -77,7 +92,7 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
   position: fixed; bottom: 20px; right: 20px; padding: 12px 24px;
   background: linear-gradient(135deg, #ff8c00, #ff6347); color: #fff; border-radius: 8px; font-weight: 600;
   opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 100;
-  box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  box-shadow: 0 4px 16px rgba(0,0,0,.15); max-width: 80vw; word-break: break-all;
 }
 #toast.show { opacity: 1; }
 </style>
@@ -85,23 +100,36 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 <body>
 <h1>⚙️ samcdp 设置</h1>
 
-<h2>远程地址</h2>
+<h2>远程地址（aitun 隧道）</h2>
 <div class="url-box">
   <span class="url empty" id="remoteUrl">获取中...</span>
   <button class="btn btn-secondary btn-sm" onclick="copyRemoteUrl()">复制</button>
 </div>
-<div class="hint" style="margin-top:6px">访问此地址查看 API 文档和接口说明（需带 ?token=xxx）</div>
+<div class="error-line" id="tunnelError"></div>
 
-<h2>aitun Key</h2>
-<div class="field">
-  <input type="password" id="aitunKey" value="" placeholder="留空则使用临时域名">
-  <div class="hint">在 aitun.cc 注册获取，用于固定子域名</div>
+<h2 style="margin-top:16px">局域网地址</h2>
+<div class="url-box muted">
+  <span class="url empty" id="lanUrl">获取中...</span>
+  <button class="btn btn-secondary btn-sm" onclick="copyLanUrl()">复制</button>
 </div>
+<div class="hint" style="margin-top:6px">同一局域网内的设备可直接访问（隧道不可用时的备用入口）</div>
+
+<h2>aitun 隧道</h2>
+<div class="field">
+  <label>aitun Key</label>
+  <input type="password" id="aitunKey" value="" placeholder="留空则使用临时代理（随机地址）">
+  <div class="hint">在 aitun.cc 注册获取；填写后用固定子域名，留空用临时代理。保存后立即生效（自动重启隧道）</div>
+</div>
+<div class="mode-line">当前模式：<b id="tunnelMode">—</b></div>
 
 <h2>运行状态</h2>
 <div class="status-bar">
-  <span class="status-dot stopped" id="statusDot"></span>
+  <span class="status-dot off" id="statusDot"></span>
   <span id="statusText">已停止</span>
+</div>
+<div class="status-bar">
+  <span class="status-dot off" id="tunnelDot"></span>
+  <span id="tunnelText">隧道未启用</span>
 </div>
 
 <h2>Profile 管理</h2>
@@ -127,16 +155,15 @@ function saveSettings() {
   var key = document.getElementById('aitunKey').value.trim();
   fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({aitun_key: key})}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast(d.msg || '已保存'); }
+    if (d.ok) { showToast(d.msg || '已保存!'); refreshStatus(); }
+    else { showToast(d.error || '保存失败'); }
   });
 }
 
 function regenerateToken() {
+  if (!confirm('重新生成 Token？旧地址将立即失效。')) return;
   fetch('/api/regenerate-token', {method:'POST'}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) {
-      document.getElementById('tokenValue').value = d.token;
-      showToast('Token 已重新生成');
-    }
+    if (d.ok) { showToast('Token 已重新生成!'); refreshStatus(); }
   });
 }
 
@@ -173,6 +200,14 @@ function copyRemoteUrl() {
   navigator.clipboard.writeText(url).then(function(){ showToast('已复制: ' + url); });
 }
 
+function copyLanUrl() {
+  var lan = document.getElementById('lanUrl').textContent;
+  if (!lan || lan == '获取中...' || lan == '未启动') { showToast('地址未就绪'); return; }
+  var token = document.getElementById('tokenValue').value;
+  var url = lan + (token && token != '-' ? '?token=' + token : '');
+  navigator.clipboard.writeText(url).then(function(){ showToast('已复制: ' + url); });
+}
+
 function copyText(t) {
   navigator.clipboard.writeText(t).then(function(){ showToast('已复制'); });
 }
@@ -183,31 +218,76 @@ function refreshStatus() {
     var text = document.getElementById('statusText');
     var tokenEl = document.getElementById('tokenValue');
     var urlEl = document.getElementById('remoteUrl');
+    var lanEl = document.getElementById('lanUrl');
+    var keyEl = document.getElementById('aitunKey');
 
     baseUrl = d.base_url || '';
+    var lan = d.lan_url || d.local_url || '';
+    // 复制目标：隧道在线→隧道地址；隧道连接中→不可复制；未启用→局域网地址
+    copyableUrl = baseUrl || (d.tunnel_running ? '' : lan);
+    if (!document.activeElement || document.activeElement !== keyEl) {
+      keyEl.value = d.aitun_key || '';
+    }
     tokenEl.value = d.token || '-';
 
     if (d.running) {
       dot.className = 'status-dot running';
       text.textContent = '运行中 (' + d.profiles.length + ' profiles)';
     } else {
-      dot.className = 'status-dot stopped';
+      dot.className = 'status-dot off';
       text.textContent = '已停止';
     }
 
-    // 远程地址规则：隧道在线→临时代理/子域名地址；隧道连接中→提示（不显示局域网地址）；
-    // 隧道未启用→本地地址（此时它是唯一可达入口）
+    // 远程地址规则（与 APK 一致）：隧道在线→隧道地址；连接中→占位提示；未启用→提示
     if (baseUrl) {
-      copyableUrl = baseUrl;
       urlEl.className = 'url';
       urlEl.textContent = baseUrl;
     } else if (d.tunnel_running) {
-      copyableUrl = '';
-      urlEl.className = 'url empty';
-      urlEl.textContent = '隧道连接中…（上线后显示临时代理/子域名地址）';
+      urlEl.className = 'url empty connecting';
+      urlEl.textContent = '隧道连接中…（上线后自动显示公网地址）';
     } else {
       urlEl.className = 'url empty';
-      urlEl.textContent = d.local_url || '未启动';
+      urlEl.textContent = d.running ? '隧道未启用' : '服务未启动';
+    }
+
+    // 局域网地址：始终显示（隧道不可用时的备用入口）
+    if (lan) {
+      lanEl.className = 'url';
+      lanEl.textContent = lan;
+    } else {
+      lanEl.className = 'url empty';
+      lanEl.textContent = '未启动';
+    }
+
+    // 隧道错误行（实时，来自 aitun 输出）
+    var errEl = document.getElementById('tunnelError');
+    if (d.tunnel_error) {
+      errEl.style.display = 'block';
+      errEl.textContent = '⚠ ' + d.tunnel_error;
+    } else {
+      errEl.style.display = 'none';
+    }
+
+    // 隧道状态行
+    var tDot = document.getElementById('tunnelDot');
+    var tText = document.getElementById('tunnelText');
+    if (baseUrl) {
+      tDot.className = 'status-dot running';
+      tText.textContent = '隧道在线';
+    } else if (d.tunnel_running) {
+      tDot.className = 'status-dot connecting';
+      tText.textContent = '隧道连接中…';
+    } else {
+      tDot.className = 'status-dot off';
+      tText.textContent = '隧道未启用';
+    }
+
+    // 当前模式（由 Key 是否填写决定，与 APK 一致）
+    var modeEl = document.getElementById('tunnelMode');
+    if (d.aitun_key) {
+      modeEl.textContent = '子域名（固定地址）';
+    } else {
+      modeEl.textContent = '临时代理（随机地址）';
     }
 
     // Render profiles
@@ -240,7 +320,7 @@ function showToast(msg) {
   var t = document.getElementById('toast');
   t.textContent = msg;
   t.className = 'show';
-  setTimeout(function(){ t.className = ''; }, 2000);
+  setTimeout(function(){ t.className = ''; }, 2500);
 }
 
 setInterval(refreshStatus, 3000);

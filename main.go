@@ -108,6 +108,9 @@ func onTrayReady() {
 
 	refreshMenuState()
 
+	// 设置页服务常驻本地（127.0.0.1），菜单点击秒开，本地脚本亦可查询状态
+	go startSettingsServer()
+
 	// 自动启动服务（托盘模式也需要自动启动）
 	go func() {
 		if err := svc.Start(); err != nil {

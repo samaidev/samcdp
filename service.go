@@ -282,10 +282,27 @@ func (s *Service) monitorChrome(inst *ProfileInstance) {
 	}
 }
 
-// onTunnelDied 隧道崩溃回调
+// onTunnelDied 隧道崩溃回调：服务运行中则自动重启隧道（最多3次，间隔5s）
 func (s *Service) onTunnelDied() {
-	// 隧道崩溃不影响 Chrome，只更新菜单状态
 	refreshMenuState()
+	if !s.IsRunning() {
+		return
+	}
+	go func() {
+		for i := 1; i <= 3; i++ {
+			time.Sleep(5 * time.Second)
+			if !s.IsRunning() || tunnel.IsRunning() {
+				return // 服务已停，或已被其他路径重启
+			}
+			debugLog(fmt.Sprintf("[service] tunnel died, auto-restart attempt %d/3", i))
+			if err := tunnel.Start(s.proxyPort, cfg.GetAitunKey()); err == nil {
+				debugLog("[service] tunnel auto-restart OK")
+				refreshMenuState()
+				return
+			}
+		}
+		debugLog("[service] tunnel auto-restart failed after 3 attempts")
+	}()
 }
 
 // waitForTunnelURL 等待隧道 URL 解析
