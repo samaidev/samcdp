@@ -117,7 +117,14 @@ public class TabEngine {
     // ------------------------------------------------------------ visibility (human handover)
 
     private static volatile android.app.Activity visibleHost;
+    private static volatile ViewGroup visibleRoot;
     private static volatile String visibleTabId;
+
+    /** Current profile name of THIS runner process (null = engine down). */
+    static String profileName() { return profileName; }
+
+    /** Tab id currently attached to the visible host (null = headless). */
+    static String visibleTabId() { return visibleTabId; }
 
     static class TabItem {
         final String id;
@@ -440,9 +447,11 @@ public class TabEngine {
     }
 
     /**
-     * TabActivity.onCreate -> attach the requested (or newest) tab's WebView
-     * to the activity's full-screen root. Returns null on success, else an error hint.
-     * MUST run on the runner process main thread (Activity lifecycle guarantees it).
+     * TabActivity.onCreate/onNewIntent -> attach the requested (or newest) tab's
+     * WebView to the activity's full-screen root. Returns null on success, else an
+     * error hint. MUST run on the runner process main thread (Activity lifecycle
+     * guarantees it). Idempotent: re-attaching the tab that is already on this root
+     * is a no-op (survives singleTask onNewIntent re-delivery).
      */
     static String attachRequested(android.app.Activity host, ViewGroup root, String want) {
         List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
@@ -452,26 +461,90 @@ public class TabEngine {
             for (TabItem t : tabs) if (t.id.equals(want) || t.id.startsWith(want)) target = t;
         }
         if (target == null) {
+            // onNewIntent without explicit tab: keep whatever is currently attached
+            if (host == visibleHost && visibleTabId != null) return null;
             target = tabs.get(0);
             for (TabItem t : tabs) if (t.openedAtMs > target.openedAtMs) target = t;
         }
         if (target.webView == null) return "tab has no webview";
         final TabItem t = target;
 
+        // same tab already on this root? nothing to do
+        if (host == visibleHost && t.id.equals(visibleTabId) && t.webView.getParent() == root) {
+            return null;
+        }
+
         // if another tab's WebView is still attached somewhere, free it first
         detachAttached();
-
-        try {
-            root.addView(t.webView, new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            t.webView.onResume();
-        } catch (Exception e) {
-            return "attach failed: " + e.getMessage();
-        }
+        attachToRoot(t, root);
         visibleHost = host;
         visibleTabId = t.id;
         log("[" + profileName + "] webview visible (human handover), tab " + t.id);
         return null;
+    }
+
+    /** Attach a tab's WebView to a root (fullscreen) and resume it. Main thread only. */
+    private static void attachToRoot(TabItem t, ViewGroup root) {
+        try {
+            ViewGroup parent = (ViewGroup) t.webView.getParent();
+            if (parent != null) parent.removeView(t.webView);
+            root.addView(t.webView, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            t.webView.onResume();
+        } catch (Exception e) {
+            log("attach failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Frontend tab switching WITHOUT restarting the host activity:
+     * detach the currently visible WebView (back to headless) and attach the
+     * requested one into the SAME root. If nothing is visible yet, fall back
+     * to showTab() which launches the profile's TabActivity.
+     */
+    static synchronized String switchTab(Context ctx, String tabId) {
+        try {
+            List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+            if (tabs == null || tabs.isEmpty()) return err("no tabs open in this profile");
+            TabItem target = null;
+            if (tabId != null && !tabId.isEmpty()) {
+                for (TabItem t : tabs) if (t.id.equals(tabId) || t.id.startsWith(tabId)) target = t;
+                if (target == null) return err("tab not found: " + tabId);
+            } else {
+                target = tabs.get(0);
+                for (TabItem t : tabs) if (t.openedAtMs > target.openedAtMs) target = t;
+            }
+            if (target.webView == null) return err("tab has no webview yet");
+            String tid = target.id;
+
+            android.app.Activity host = visibleHost;
+            ViewGroup root = visibleRoot;
+            if (host == null || root == null || tid.equals(visibleTabId)) {
+                // nothing visible (or already showing this tab) -> route through show
+                return showTab(ctx, tid);
+            }
+            final TabItem t = target;
+            detachAttached();
+            final ViewGroup rootF = root;
+            Runnable attach = () -> {
+                attachToRoot(t, rootF);
+                visibleHost = host;
+                visibleRoot = rootF;
+                visibleTabId = t.id;
+            };
+            if (Looper.myLooper() == Looper.getMainLooper()) attach.run();
+            else MAIN.post(attach);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("visible", true);
+            o.put("tab", tid);
+            o.put("profile", profileName);
+            o.put("switched", true);
+            log("[" + profileName + "] switched visible webview -> tab " + tid);
+            return o.toString();
+        } catch (Exception e) {
+            return err("switch failed: " + e.getMessage());
+        }
     }
 
     /** Close the visible host (if any) and put the WebView back to headless mode. */
@@ -491,6 +564,7 @@ public class TabEngine {
     static void detach() {
         android.app.Activity host = visibleHost;
         visibleHost = null;
+        visibleRoot = null;
         if (host != null && !host.isFinishing()) {
             try {
                 host.finish();
@@ -504,6 +578,7 @@ public class TabEngine {
     private static void detachAttached() {
         String tid = visibleTabId;
         visibleTabId = null;
+        visibleRoot = null;
         if (tid == null || profileName == null) return;
         List<TabItem> tabs = TABS.get(profileName);
         if (tabs == null) return;
@@ -529,9 +604,22 @@ public class TabEngine {
         try {
             JSONObject o = new JSONObject();
             o.put("ok", true);
-            o.put("visible", visibleHost != null && visibleTabId != null);
+            boolean vis = visibleHost != null && visibleTabId != null;
+            o.put("visible", vis);
             o.put("tab", visibleTabId == null ? JSONObject.NULL : visibleTabId);
             if (profileName != null) o.put("profile", profileName);
+            if (vis) {
+                List<TabItem> tabs = TABS.get(profileName);
+                if (tabs != null) {
+                    for (TabItem t : tabs) {
+                        if (t.id.equals(visibleTabId)) {
+                            o.put("url", t.url == null ? JSONObject.NULL : t.url);
+                            o.put("title", t.title == null ? "" : t.title);
+                            break;
+                        }
+                    }
+                }
+            }
             return o.toString();
         } catch (Exception e) {
             return "{\"ok\":false}";

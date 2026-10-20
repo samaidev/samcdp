@@ -79,7 +79,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.2.2");
+            o.put("version", "1.3.0");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -87,7 +87,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.2.2");
+            o.put("version", "1.3.0");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -119,6 +119,51 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/tunnel")) {
             return json(200, new JSONObject(TunnelManager.statusJson()));
+        }
+
+        // Aggregated multi-profile frontend state: every running profile's tabs +
+        // which WebView is currently visible — the data behind the on-phone
+        // switcher pill, usable for remote control too.
+        if (path.equals("/api/frontend") && req.method.equals("GET")) {
+            JSONObject o = ok();
+            JSONArray arr = new JSONArray();
+            for (Profile p : ProfileManager.profiles()) {
+                JSONObject po = new JSONObject();
+                try {
+                    po.put("profile", p.name);
+                    po.put("running", p.running);
+                    po.put("slot", p.slot);
+                    boolean vis = false;
+                    String visTab = null, visUrl = null, visTitle = null;
+                    JSONArray tabsArr = new JSONArray();
+                    if (p.running) {
+                        ProfileManager.ProxyResult v = ProfileManager.visible(p);
+                        try {
+                            JSONObject vj = new JSONObject(new String(v.payload));
+                            vis = vj.optBoolean("visible");
+                            visTab = vj.has("tab") && !vj.isNull("tab") ? vj.optString("tab") : null;
+                            visUrl = vj.optString("url", null);
+                            visTitle = vj.optString("title", null);
+                        } catch (Exception ignored) {
+                        }
+                        ProfileManager.ProxyResult tr = ProfileManager.tabs(p);
+                        try {
+                            JSONArray ta = new JSONObject(new String(tr.payload)).optJSONArray("tabs");
+                            if (ta != null) tabsArr = ta;
+                        } catch (Exception ignored) {
+                        }
+                    }
+                    po.put("visible", vis);
+                    po.put("visible_tab", visTab == null ? JSONObject.NULL : visTab);
+                    po.put("visible_url", visUrl == null ? JSONObject.NULL : visUrl);
+                    po.put("visible_title", visTitle == null ? JSONObject.NULL : visTitle);
+                    po.put("tabs", tabsArr);
+                } catch (Exception ignored) {
+                }
+                arr.put(po);
+            }
+            o.put("webviews", arr);
+            return json(200, o);
         }
 
         if (path.equals("/api/tunnel/start") && req.method.equals("POST")) {
@@ -218,6 +263,10 @@ public class Api extends HttpServer {
                 return toResp(ProfileManager.show(p, req.query.get("tab")));
             }
 
+            if (seg.length == 5 && seg[4].equals("switch") && req.method.equals("POST")) {
+                return toResp(ProfileManager.switchTab(p, req.query.get("tab")));
+            }
+
             if (seg.length == 5 && seg[4].equals("hide") && req.method.equals("POST")) {
                 return toResp(ProfileManager.hide(p));
             }
@@ -269,9 +318,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.2.2");
+                    o.put("Browser", "samcdp-webview/1.3.0");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.2.2 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.3.0 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -340,7 +389,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.2.2</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.3.0</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");
@@ -356,8 +405,10 @@ public class Api extends HttpServer {
         row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", "启动（独立进程 Cookie 池）");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", "停止（Cookie 持久化）");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/show?tab=ID&amp;token=xxx", "全屏显示 WebView（人工接管：验证码/登录）");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/switch?tab=ID&amp;token=xxx", "切换该 Profile 显示中的 WebView（前端切换器）");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/hide?token=xxx", "隐藏 WebView（回到无头模式）");
         row(sb, "GET", "/api/profiles/&lt;name&gt;/visible?token=xxx", "WebView 可见状态");
+        row(sb, "GET", "/api/frontend?token=xxx", "多 Profile 前端聚合（全部 tabs + 当前可见项）");
         row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&ua=AGENT&token=xxx", "打开标签页");
         row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "关闭标签页");

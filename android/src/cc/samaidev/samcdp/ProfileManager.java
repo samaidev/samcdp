@@ -248,6 +248,12 @@ public class ProfileManager {
         return proxy(p, "POST", "/show" + q, null);
     }
 
+    /** Switch the profile's visible WebView to another tab (frontend switcher). */
+    public static ProxyResult switchTab(Profile p, String tabId) {
+        String q = tabId != null && !tabId.isEmpty() ? "?tab=" + urlencode(tabId) : "";
+        return proxy(p, "POST", "/switch" + q, null);
+    }
+
     /** Hide the visible WebView and return the tab to headless mode. */
     public static ProxyResult hide(Profile p) {
         return proxy(p, "POST", "/hide", null);

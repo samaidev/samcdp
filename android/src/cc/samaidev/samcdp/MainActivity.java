@@ -402,6 +402,27 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         info.setLayoutParams(ilp);
         row.addView(info);
 
+        Button show = new Button(this);
+        show.setText("显示");
+        show.setAllCaps(false);
+        show.setTextSize(12);
+        show.setTextColor(0xFFFFFFFF);
+        show.setBackground(getDrawable(R.drawable.btn_orange));
+        show.setPadding(26, 10, 26, 10);
+        show.setOnClickListener(v -> {
+            if (!pr.running) {
+                Toast.makeText(this, "profile 未运行，先打开开关启动", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            try {
+                // opens the profile's TabActivity full-screen (frontend / human handover)
+                ProfileManager.show(pr, null);
+            } catch (Exception e) {
+                Toast.makeText(this, "显示失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        });
+        row.addView(show);
+
         Button del = new Button(this);
         del.setText("删除");
         del.setAllCaps(false);
