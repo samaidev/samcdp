@@ -5,7 +5,7 @@ Android (APK) version of [SamCDP](../README.md) — turn an Android phone into a
 ## Highlights
 
 - **Desktop-parity REST API** — profiles / start / stop / tabs / CDP-style `json` passthrough, same token auth (`?token=` or `Authorization: Bearer`)
-- **Headless WebView engine** — each tab is an off-screen WebView (1080x2340) with JavaScript + DOM storage enabled; pages really render, so `eval` and `screenshot` work on any site
+- **Headless WebView engine** — each tab is an off-screen WebView (412x915 portrait phone viewport) with JavaScript + DOM storage enabled; pages really render, so `eval` and `screenshot` work on any site
 - **Login persistence** — cookie jars are snapshotted per profile on stop and restored on start
 - **Duration auto-stop** — same as desktop: `start?duration=MIN` schedules an automatic shutdown
 - **Agent-friendly extras** — `POST .../tabs/<id>/eval` runs JS and returns the result; `GET .../tabs/<id>/screenshot` returns a live PNG
@@ -54,7 +54,7 @@ curl -X POST -H "Content-Type: application/json" \
   "$BASE/api/profiles/agent-1/tabs/<tab-id>/eval?token=$TOKEN"
 # → {"ok":true,"result":"Example Domain"}
 
-# grab a live screenshot (PNG, 1080x2340)
+# grab a live screenshot (PNG, 412x915 portrait)
 curl -o tab.png "$BASE/api/profiles/agent-1/tabs/<tab-id>/screenshot?token=$TOKEN"
 
 # stop and persist cookies

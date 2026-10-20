@@ -35,56 +35,63 @@ import java.util.concurrent.TimeUnit;
  */
 public class TabEngine {
 
-    public static final int TAB_W = 1920, TAB_H = 1080;
+    // Portrait phone CSS viewport (Pixel 7) — width < height, matches the mobile UA below
+    public static final int TAB_W = 412, TAB_H = 915;
 
-    // Stealth JS injected on every page load to mask Android WebView fingerprint
+    // Chrome-on-Android mobile UA (Pixel 7 / Android 13 / Chrome 126).
+    // Self-consistent with the real device: the APK runs on an Android phone, so the
+    // mask only strips WebView markers ('; wv', 'Build/') and stays in the same family.
+    static final String MOBILE_UA = "Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+            + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36";
+
+    // Stealth JS injected on every page load — MOBILE portrait fingerprint.
+    // Everything below mirrors what a real Pixel 7 running Chrome reports, so the
+    // mask survives cross-checks: real GPU / touch stack stay untouched (already
+    // mobile), only WebView-vs-Chrome differences are patched.
     static final String STEALTH_JS = "(function(){"
         + "try{"
-        // Override navigator.platform to match Mac UA
-        + "Object.defineProperty(navigator,'platform',{get:function(){return 'MacIntel';},configurable:true});"
-        // Override navigator.userAgent to match Mac UA (double insurance)
-        + "Object.defineProperty(navigator,'userAgent',{get:function(){return 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';},configurable:true});"
+        // Override navigator.platform (Chrome on Android reports 'Linux armv81')
+        + "Object.defineProperty(navigator,'platform',{get:function(){return 'Linux armv81';},configurable:true});"
+        // Override navigator.userAgent — Chrome mobile UA, strips the WebView '; wv' marker
+        + "Object.defineProperty(navigator,'userAgent',{get:function(){return '" + MOBILE_UA + "';},configurable:true});"
         // Override navigator.appVersion
-        + "Object.defineProperty(navigator,'appVersion',{get:function(){return '5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';},configurable:true});"
-        // Override navigator.oscpu
-        + "Object.defineProperty(navigator,'oscpu',{get:function(){return 'Intel Mac OS X 10.15';},configurable:true});"
-        // Remove touch indicators
-        + "Object.defineProperty(navigator,'maxTouchPoints',{get:function(){return 0;},configurable:true});"
-        + "try{Object.defineProperty(navigator,'TouchEvent',{get:function(){return undefined;},configurable:true});}catch(e){}"
-        + "try{Object.defineProperty(navigator,'ontouchstart',{get:function(){return null;},configurable:true});}catch(e){}"
-        // Override screen dimensions to desktop
-        + "try{Object.defineProperty(screen,'width',{get:function(){return 1920;},configurable:true});"
-        + "Object.defineProperty(screen,'height',{get:function(){return 1080;},configurable:true});"
-        + "Object.defineProperty(screen,'availWidth',{get:function(){return 1920;},configurable:true});"
-        + "Object.defineProperty(screen,'availHeight',{get:function(){return 1050;},configurable:true});"
+        + "Object.defineProperty(navigator,'appVersion',{get:function(){return '5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36';},configurable:true});"
+        // Touch screen: 5 touch points (real phone). Do NOT hide TouchEvent/ontouchstart —
+        // a mobile UA with no touch support is an instant red flag.
+        + "Object.defineProperty(navigator,'maxTouchPoints',{get:function(){return 5;},configurable:true});"
+        // Override screen dimensions to PORTRAIT phone CSS viewport (width < height)
+        + "try{Object.defineProperty(screen,'width',{get:function(){return 412;},configurable:true});"
+        + "Object.defineProperty(screen,'height',{get:function(){return 915;},configurable:true});"
+        + "Object.defineProperty(screen,'availWidth',{get:function(){return 412;},configurable:true});"
+        + "Object.defineProperty(screen,'availHeight',{get:function(){return 915;},configurable:true});"
         + "Object.defineProperty(screen,'colorDepth',{get:function(){return 24;},configurable:true});"
         + "Object.defineProperty(screen,'pixelDepth',{get:function(){return 24;},configurable:true});}catch(e){}"
-        // Override window dimensions
-        + "try{Object.defineProperty(window,'innerWidth',{get:function(){return 1920;},configurable:true});"
-        + "Object.defineProperty(window,'innerHeight',{get:function(){return 937;},configurable:true});"
-        + "Object.defineProperty(window,'outerWidth',{get:function(){return 1920;},configurable:true});"
-        + "Object.defineProperty(window,'outerHeight',{get:function(){return 1080;},configurable:true});}catch(e){}"
-        // Override devicePixelRatio
-        + "try{Object.defineProperty(window,'devicePixelRatio',{get:function(){return 1;},configurable:true});}catch(e){}"
-        // Mask WebGL vendor/renderer
-        + "try{var gp=WebGLRenderingContext.prototype.getParameter;WebGLRenderingContext.prototype.getParameter=function(p){if(p===37445)return 'Intel Inc.';if(p===37446)return 'Intel Iris OpenGL Engine';return gp.call(this,p);};}catch(e){}"
-        + "try{var gp2=WebGL2RenderingContext.prototype.getParameter;WebGL2RenderingContext.prototype.getParameter=function(p){if(p===37445)return 'Intel Inc.';if(p===37446)return 'Intel Iris OpenGL Engine';return gp2.call(this,p);};}catch(e){}"
+        // Override window dimensions (portrait, no browser chrome in headless WebView)
+        + "try{Object.defineProperty(window,'innerWidth',{get:function(){return 412;},configurable:true});"
+        + "Object.defineProperty(window,'innerHeight',{get:function(){return 915;},configurable:true});"
+        + "Object.defineProperty(window,'outerWidth',{get:function(){return 412;},configurable:true});"
+        + "Object.defineProperty(window,'outerHeight',{get:function(){return 915;},configurable:true});}catch(e){}"
+        // Override devicePixelRatio (Pixel 7 = 2.625)
+        + "try{Object.defineProperty(window,'devicePixelRatio',{get:function(){return 2.625;},configurable:true});}catch(e){}"
+        // WebGL vendor/renderer left UNTOUCHED — the real mobile GPU (Adreno/Mali)
+        // matches the Android UA; faking 'Intel Iris OpenGL Engine' contradicts it.
+        // navigator.connection left UNTOUCHED — mobile Chrome exposes it; hiding it
+        // looks like a desktop spoof.
         // Override navigator.languages
         + "try{Object.defineProperty(navigator,'languages',{get:function(){return ['en-US','en'];},configurable:true});}catch(e){}"
-        // Override navigator.hardwareConcurrency
+        // Override navigator.hardwareConcurrency (Pixel 7 Tensor G2 = 8 cores)
         + "try{Object.defineProperty(navigator,'hardwareConcurrency',{get:function(){return 8;},configurable:true});}catch(e){}"
         // Override navigator.deviceMemory
         + "try{Object.defineProperty(navigator,'deviceMemory',{get:function(){return 8;},configurable:true});}catch(e){}"
         // Hide webdriver
         + "try{Object.defineProperty(navigator,'webdriver',{get:function(){return false;},configurable:true});}catch(e){}"
-        // Override navigator.connection (remove mobile hints)
-        + "try{Object.defineProperty(navigator,'connection',{get:function(){return undefined;},configurable:true});}catch(e){}"
         // Override navigator.permissions API to silence notifications query
         + "try{var origQuery=navigator.permissions.query;navigator.permissions.query=function(p){if(p&&p.name==='notifications')return Promise.resolve({state:'prompt'});return origQuery.call(this,p);};}catch(e){}"
         // Patch canvas fingerprint (add subtle noise)
         + "try{var origToDataURL=HTMLCanvasElement.prototype.toDataURL;HTMLCanvasElement.prototype.toDataURL=function(){var r=origToDataURL.apply(this,arguments);if(r.length>100){var noise=Math.floor(Math.random()*10);r=r.substring(0,r.length-3)+noise.toString().padStart(3,'0');}return r;};}catch(e){}"
-        // Override navigator.plugins to look like desktop Chrome
-        + "try{Object.defineProperty(navigator,'plugins',{get:function(){return [{name:'PDF Viewer'},{name:'Chrome PDF Viewer'},{name:'Chromium PDF Viewer'}];},configurable:true});}catch(e){}"
+        // Override navigator.plugins — Chrome (incl. Android) exposes the same 5 PDF
+        // entries; real WebView returns an EMPTY list which is a WebView tell-tale
+        + "try{Object.defineProperty(navigator,'plugins',{get:function(){var arr=[{name:'PDF Viewer'},{name:'Chrome PDF Viewer'},{name:'Chromium PDF Viewer'},{name:'Microsoft Edge PDF Viewer'},{name:'Web Browser PDF Viewer'}];arr.item=function(i){return arr[i]||null;};arr.namedItem=function(n){for(var i=0;i<arr.length;i++)if(arr[i].name===n)return arr[i];return null;};return arr;},configurable:true});}catch(e){}"
         // Override navigator.mimeTypes
         + "try{Object.defineProperty(navigator,'mimeTypes',{get:function(){return [{type:'application/pdf'},{type:'text/pdf'}];},configurable:true});}catch(e){}"
         + "}catch(e){}"
@@ -192,13 +199,12 @@ public class TabEngine {
                     if (ua != null && !ua.isEmpty()) {
                         st.setUserAgentString(ua);
                     } else {
-                        st.setUserAgentString("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                                + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36");
+                        st.setUserAgentString(MOBILE_UA);
                     }
 
-                    // --- stealth hardening ---
-                    st.setSupportZoom(false);
-                    st.setBuiltInZoomControls(false);
+                    // --- stealth hardening (phone behaviour: pinch-zoom, no buttons) ---
+                    st.setSupportZoom(true);
+                    st.setBuiltInZoomControls(true);
                     st.setDisplayZoomControls(false);
                     st.setMediaPlaybackRequiresUserGesture(false);
                     st.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
