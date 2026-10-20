@@ -39,6 +39,11 @@ public class TabEngine {
     // Portrait phone CSS viewport (Pixel 7) — width < height, matches the mobile UA below
     public static final int TAB_W = 412, TAB_H = 915;
 
+    // Headless PHYSICAL pixel size = CSS viewport * real device density.
+    // A detached WebView still inherits the device density (e.g. 2.75 on a 2K phone),
+    // so measuring 412x915 raw would give a 150px CSS viewport and wreck layout.
+    private static volatile int headlessW = TAB_W, headlessH = TAB_H;
+
     // Chrome-on-Android mobile UA (Pixel 7 / Android 13 / Chrome 126).
     // Self-consistent with the real device: the APK runs on an Android phone, so the
     // mask only strips WebView markers ('; wv', 'Build/') and stays in the same family.
@@ -190,6 +195,14 @@ public class TabEngine {
     static synchronized String openTab(Context ctx, String url, String ua) {
         try {
             if (profileName == null) return err("engine not started");
+            // recompute headless physical size from the REAL device density every open —
+            // CSS viewport then equals TAB_W x TAB_H exactly, in sync with STEALTH_JS
+            try {
+                float dpr = ctx.getResources().getDisplayMetrics().density;
+                headlessW = Math.round(TAB_W * dpr);
+                headlessH = Math.round(TAB_H * dpr);
+            } catch (Exception ignored) {
+            }
             List<TabItem> tabs = TABS.computeIfAbsent(profileName, k -> new CopyOnWriteArrayList<>());
             String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
             Set<String> visited = VISITED.computeIfAbsent(profileName, k -> ConcurrentHashMap.newKeySet());
@@ -254,9 +267,9 @@ public class TabEngine {
                             track(visited, u);
                         }
                     });
-                    wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(TAB_W, android.view.View.MeasureSpec.EXACTLY),
-                            android.view.View.MeasureSpec.makeMeasureSpec(TAB_H, android.view.View.MeasureSpec.EXACTLY));
-                    wv.layout(0, 0, TAB_W, TAB_H);
+                    wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
+                            android.view.View.MeasureSpec.makeMeasureSpec(headlessH, android.view.View.MeasureSpec.EXACTLY));
+                    wv.layout(0, 0, headlessW, headlessH);
                     t.webView = wv;
                     wv.loadUrl(url);
                     tabs.add(t);
@@ -361,7 +374,12 @@ public class TabEngine {
         ByteArrayOutputStream[] holder = new ByteArrayOutputStream[1];
         runAndWait(() -> {
             try {
-                Bitmap bmp = Bitmap.createBitmap(TAB_W, TAB_H, Bitmap.Config.ARGB_8888);
+                int w = tab.webView.getWidth(), h = tab.webView.getHeight();
+                if (w <= 0 || h <= 0) {
+                    w = headlessW;
+                    h = headlessH;
+                }
+                Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
                 tab.webView.draw(new Canvas(bmp));
                 ByteArrayOutputStream bos = new ByteArrayOutputStream();
                 bmp.compress(Bitmap.CompressFormat.PNG, 100, bos);
@@ -497,9 +515,9 @@ public class TabEngine {
                         ViewGroup parent = (ViewGroup) wv.getParent();
                         if (parent != null) parent.removeView(wv);
                         wv.onPause();
-                        wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(TAB_W, android.view.View.MeasureSpec.EXACTLY),
-                                android.view.View.MeasureSpec.makeMeasureSpec(TAB_H, android.view.View.MeasureSpec.EXACTLY));
-                        wv.layout(0, 0, TAB_W, TAB_H);
+                        wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
+                                android.view.View.MeasureSpec.makeMeasureSpec(headlessH, android.view.View.MeasureSpec.EXACTLY));
+                        wv.layout(0, 0, headlessW, headlessH);
                     } catch (Exception ignored) {
                     }
                 });
