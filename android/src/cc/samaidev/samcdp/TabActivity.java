@@ -91,6 +91,32 @@ public class TabActivity extends Activity {
         pill.setText((pn == null ? "" : pn + "  ") + "≡");
         root.addView(pill);
 
+        // top-right hide button: detach the WebView straight back to headless
+        // (no need to open the switcher first)
+        TextView hideBtn = new TextView(this);
+        hideBtn.setTextSize(12);
+        hideBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        hideBtn.setTextColor(0xFFFFFFFF);
+        hideBtn.setSingleLine(true);
+        hideBtn.setGravity(Gravity.CENTER);
+        hideBtn.setPadding(padH, padV, padH, padV);
+        GradientDrawable hbg = new GradientDrawable();
+        hbg.setColor(0xAA000000);
+        hbg.setCornerRadius(20 * den);
+        hideBtn.setBackground(hbg);
+        hideBtn.setText("✕ 隐藏");
+        hideBtn.setOnClickListener(v -> {
+            TabEngine.hide(); // finishes the host itself, WebView back to headless
+            finish();
+        });
+        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.gravity = Gravity.TOP | Gravity.END;
+        hlp.topMargin = Math.round(10 * den);
+        hlp.rightMargin = Math.round(10 * den);
+        hideBtn.setLayoutParams(hlp);
+        root.addView(hideBtn);
+
         String want = getIntent() != null ? getIntent().getStringExtra("tab") : null;
         String res = TabEngine.attachRequested(this, content, want);
         if (res != null) {

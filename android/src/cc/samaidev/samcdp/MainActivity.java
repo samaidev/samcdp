@@ -413,7 +413,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         row.addView(info);
 
         Button show = new Button(this);
-        show.setText("显示");
+        show.setText("显示WebView");
         show.setAllCaps(false);
         show.setTextSize(12);
         show.setTextColor(0xFFFFFFFF);
@@ -424,12 +424,48 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 Toast.makeText(this, "profile 未运行，先打开开关启动", Toast.LENGTH_SHORT).show();
                 return;
             }
-            try {
-                // opens the profile's TabActivity full-screen (frontend / human handover)
-                ProfileManager.show(pr, null);
-            } catch (Exception e) {
-                Toast.makeText(this, "显示失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            // Android 10+ / ColorOS: TabActivity is launched from the runner's
+            // background service process — without the "display over other apps"
+            // permission the system silently drops that launch (webview never shows)
+            if (!Settings.canDrawOverlays(this)) {
+                Toast.makeText(this, "弹出 WebView 需要「显示在应用上层」权限，请在接下来的页面允许",
+                        Toast.LENGTH_LONG).show();
+                try {
+                    startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:" + getPackageName())));
+                } catch (Exception e) {
+                    Toast.makeText(this, "请在系统设置中授予悬浮窗权限后重试", Toast.LENGTH_LONG).show();
+                }
+                return;
             }
+            show.setEnabled(false);
+            // HTTP to the runner must leave the main thread (NetworkOnMainThreadException
+            // made this button silently fail with only an error toast in <= v1.3.1)
+            new Thread(() -> {
+                ProfileManager.ProxyResult r;
+                try {
+                    r = ProfileManager.show(pr, null);
+                } catch (Exception e) {
+                    r = null;
+                    ProfileManager.dispatchLog("[" + pr.name + "] show failed: " + e.getMessage());
+                }
+                final ProfileManager.ProxyResult res = r;
+                ui.post(() -> {
+                    show.setEnabled(true);
+                    if (res == null || res.status != 200) {
+                        String err = res == null ? "请求异常" : "HTTP " + res.status;
+                        if (res != null) {
+                            try {
+                                String e2 = new org.json.JSONObject(new String(res.payload, "UTF-8"))
+                                        .optString("error");
+                                if (!e2.isEmpty()) err = e2;
+                            } catch (Exception ignored) {}
+                        }
+                        Toast.makeText(this, "显示失败: " + err, Toast.LENGTH_LONG).show();
+                    }
+                    ui.postDelayed(this::render, 500);
+                });
+            }, "samcdp-show").start();
         });
         row.addView(show);
 
