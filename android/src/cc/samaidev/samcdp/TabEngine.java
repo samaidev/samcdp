@@ -105,6 +105,21 @@ public class TabEngine {
         + "try{Object.defineProperty(navigator,'plugins',{get:function(){var arr=[{name:'PDF Viewer'},{name:'Chrome PDF Viewer'},{name:'Chromium PDF Viewer'},{name:'Microsoft Edge PDF Viewer'},{name:'Web Browser PDF Viewer'}];arr.item=function(i){return arr[i]||null;};arr.namedItem=function(n){for(var i=0;i<arr.length;i++)if(arr[i].name===n)return arr[i];return null;};return arr;},configurable:true});}catch(e){}"
         // Override navigator.mimeTypes
         + "try{Object.defineProperty(navigator,'mimeTypes',{get:function(){return [{type:'application/pdf'},{type:'text/pdf'}];},configurable:true});}catch(e){}"
+        // Override navigator.userAgentData — the REAL engine brands itself
+        // 'Android WebView' via client hints while our UA string claims Chrome 126;
+        // Google cross-checks them (accounts.google.com/gsi then silently returns
+        // empty: 'Failed to decode. No response data received from transform layer').
+        // Report Chrome-consistent client hints instead. KEEP VERSIONS IN SYNC
+        // WITH MOBILE_UA (Chrome/126, Pixel 7, Android 13).
+        + "try{if(navigator.userAgentData){"
+        + "var __fl=[{brand:'Not A;Brand',version:'24'},{brand:'Chromium',version:'126'},{brand:'Google Chrome',version:'126'}];"
+        + "var __uad={brands:__fl,mobile:true,platform:'Android',toJSON:function(){return {brands:__fl,mobile:true,platform:'Android'};}};"
+        + "__uad.getHighEntropyValues=function(hints){var o={mobile:true,platform:'Android',architecture:'',bitness:'',model:'Pixel 7',platformVersion:'13.0.0',uaFullVersion:'126.0.0.0',fullVersionList:__fl,wow64:false};var r={};for(var i=0;i<hints.length;i++)if(hints[i] in o)r[hints[i]]=o[hints[i]];return Promise.resolve(r);};"
+        + "Object.defineProperty(navigator,'userAgentData',{get:function(){return __uad;},configurable:true});"
+        + "}}catch(e){}"
+        // window.chrome: always present in real Chrome, absent in WebView — sites
+        // use it as an embedded-webview tell-tale
+        + "try{if(!window.chrome){window.chrome={runtime:{connect:function(){return {};},sendMessage:function(){}},loadTimes:function(){return {};},csi:function(){return {pageT:null};}};}}catch(e){}"
         + "}catch(e){}"
         + "})();";
 
@@ -590,6 +605,30 @@ public class TabEngine {
         } catch (Exception ignored) {
         }
         return "{\"ok\":true,\"visible\":false}";
+    }
+
+    /**
+     * Reload the currently VISIBLE tab's page (top-right ⟳ button in TabActivity).
+     * Recovers stuck pages: renderer-crash blanks, half-loaded captchas, dead XHRs.
+     * Main thread only when called from TabActivity (runAndWait runs inline).
+     */
+    static String reloadVisible() {
+        String tid = visibleTabId;
+        if (tid == null) return err("no visible tab");
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        TabItem target = null;
+        if (tabs != null) for (TabItem t : tabs) if (t.id.equals(tid)) target = t;
+        if (target == null || target.webView == null) return err("tab has no webview");
+        final TabItem t = target;
+        runAndWait(() -> {
+            try {
+                t.webView.reload();
+                log("[" + profileName + "] reloaded visible tab " + t.id);
+            } catch (Exception e) {
+                log("reload failed: " + e.getMessage());
+            }
+        });
+        return "{\"ok\":true,\"reloaded\":\"" + tid + "\"}";
     }
 
     /** Activity.onDestroy -> full detach: finish-safe, idempotent. */

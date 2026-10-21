@@ -236,6 +236,8 @@ public abstract class BaseRunnerService extends Service {
                         .getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/hide") && method.equals("POST")) {
                 payload = TabEngine.hide().getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/reload") && method.equals("POST")) {
+                payload = TabEngine.reloadVisible().getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/visible") && method.equals("GET")) {
                 payload = TabEngine.visibleJson().getBytes(StandardCharsets.UTF_8);
             } else {

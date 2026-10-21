@@ -91,8 +91,33 @@ public class TabActivity extends Activity {
         pill.setText((pn == null ? "" : pn + "  ") + "≡");
         root.addView(pill);
 
-        // top-right hide button: detach the WebView straight back to headless
-        // (no need to open the switcher first)
+        // top-right cluster: [⟳ 刷新] [✕ 隐藏] — refresh reloads the visible page
+        // (recovers stuck/blank pages), hide detaches back to headless
+        LinearLayout topBtns = new LinearLayout(this);
+        topBtns.setOrientation(LinearLayout.HORIZONTAL);
+        topBtns.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView refreshBtn = new TextView(this);
+        refreshBtn.setTextSize(12);
+        refreshBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        refreshBtn.setTextColor(0xFFFFFFFF);
+        refreshBtn.setSingleLine(true);
+        refreshBtn.setGravity(Gravity.CENTER);
+        refreshBtn.setPadding(padH, padV, padH, padV);
+        GradientDrawable rbg = new GradientDrawable();
+        rbg.setColor(0xAA000000);
+        rbg.setCornerRadius(20 * den);
+        refreshBtn.setBackground(rbg);
+        refreshBtn.setText("⟳ 刷新");
+        refreshBtn.setOnClickListener(v -> {
+            String r = TabEngine.reloadVisible();
+            if (r != null && r.contains("\"ok\":false")) Toast2("没有可刷新的页面");
+        });
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.rightMargin = Math.round(8 * den);
+        topBtns.addView(refreshBtn, rlp);
+
         TextView hideBtn = new TextView(this);
         hideBtn.setTextSize(12);
         hideBtn.setTypeface(Typeface.DEFAULT_BOLD);
@@ -109,13 +134,15 @@ public class TabActivity extends Activity {
             TabEngine.hide(); // finishes the host itself, WebView back to headless
             finish();
         });
+        topBtns.addView(hideBtn);
+
         FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         hlp.gravity = Gravity.TOP | Gravity.END;
         hlp.topMargin = Math.round(10 * den);
         hlp.rightMargin = Math.round(10 * den);
-        hideBtn.setLayoutParams(hlp);
-        root.addView(hideBtn);
+        topBtns.setLayoutParams(hlp);
+        root.addView(topBtns);
 
         String want = getIntent() != null ? getIntent().getStringExtra("tab") : null;
         String res = TabEngine.attachRequested(this, content, want);
