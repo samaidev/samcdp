@@ -416,7 +416,10 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         show.setText("显示WebView");
         show.setAllCaps(false);
         show.setTextSize(12);
-        show.setTextColor(0xFFFFFFFF);
+        // SAME pattern as the 删除 button: colored text on the light card bg that
+        // matches the button's own border — white text here was invisible
+        // (white-on-white on the cream theme, user-reported in v1.3.3)
+        show.setTextColor(getColor(R.color.heading));
         show.setBackground(getDrawable(R.drawable.btn_orange));
         show.setPadding(26, 10, 26, 10);
         show.setOnClickListener(v -> {

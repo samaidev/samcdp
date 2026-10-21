@@ -40,6 +40,10 @@ public class TabEngine {
     // Portrait phone CSS viewport (Pixel 7) — width < height, matches the mobile UA below
     public static final int TAB_W = 412, TAB_H = 915;
 
+    // Auto-opened when「显示WebView」is pressed on a profile that has no tab yet —
+    // the button must always give the user something to look at, not an error toast
+    public static final String START_TAB_URL = "https://www.baidu.com";
+
     // Headless PHYSICAL pixel size = CSS viewport * real device density.
     // A detached WebView still inherits the device density (e.g. 2.75 on a 2K phone),
     // so measuring 412x915 raw would give a 150px CSS viewport and wreck layout.
@@ -421,7 +425,19 @@ public class TabEngine {
     static String showTab(Context ctx, String tabId) {
         try {
             List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
-            if (tabs == null || tabs.isEmpty()) return err("no tabs open in this profile");
+            if (tabs == null || tabs.isEmpty()) {
+                // profile is running but nobody opened a tab yet — auto-create a
+                // start tab so「显示WebView」always works instead of toasting an error
+                String opened = openTab(ctx, START_TAB_URL, null);
+                boolean okOpen = false;
+                try {
+                    okOpen = new JSONObject(opened).optBoolean("ok");
+                } catch (Exception ignored) {
+                }
+                if (!okOpen) return err("no tabs open in this profile");
+                tabs = TABS.get(profileName);
+                log("[" + profileName + "] auto-opened start tab for show request");
+            }
             TabItem target = null;
             if (tabId != null && !tabId.isEmpty()) {
                 for (TabItem t : tabs) if (t.id.equals(tabId) || t.id.startsWith(tabId)) target = t;
