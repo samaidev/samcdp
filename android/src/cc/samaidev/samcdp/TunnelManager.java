@@ -126,36 +126,12 @@ public class TunnelManager {
         // Resolve the server host once via a 3-step chain and pass the IP via -s:
         //   1) system resolver  2) AliDNS DoH over IP (survives broken LAN DNS)
         //   3) hardcoded fallback IP (verified 2025-10-19)
-        String[] cmdF = cmd;
-        String serverIp = null;
-        try {
-            serverIp = java.net.InetAddress.getByName(SERVER_HOST).getHostAddress();
-            ProfileManager.dispatchLog("[aitun] server resolved via system DNS: " + serverIp);
-        } catch (Exception e) {
-            ProfileManager.dispatchLog("[aitun] system DNS failed: " + e.getMessage());
-        }
-        if (serverIp == null || !serverIp.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
-            serverIp = dohResolve(SERVER_HOST);
-            if (serverIp != null)
-                ProfileManager.dispatchLog("[aitun] server resolved via DoH(223.5.5.5): " + serverIp);
-        }
-        if (serverIp == null) {
-            serverIp = SERVER_FALLBACK_IP;
-            ProfileManager.dispatchLog("[aitun] DNS unavailable, using fallback IP: " + serverIp);
-        }
-        try {
-            String[] cmd2 = new String[cmd.length + 2];
-            cmd2[0] = cmd[0];
-            cmd2[1] = "-s";
-            cmd2[2] = serverIp + ":6639";
-            System.arraycopy(cmd, 1, cmd2, 3, cmd.length - 1);
-            cmdF = cmd2;
-        } catch (Exception e) {
-            ProfileManager.dispatchLog("[aitun] -s param failed, using hostname: " + e.getMessage());
-        }
-        final String[] finalCmd = cmdF;
+        final String[] baseCmd = cmd;
 
         Thread t = new Thread(() -> {
+            // DNS 解析 + 命令拼装必须在后台线程：InetAddress.getByName 在主线程
+            // 会抛 NetworkOnMainThreadException（点击启动隧道即闪退的根因）
+            final String[] finalCmd = buildServerCmd(baseCmd);
             int consecutiveErrors = 0;
             boolean everOnline = false;
             for (int attempt = 1; attempt <= 4; attempt++) {
@@ -249,6 +225,38 @@ public class TunnelManager {
         }, "aitun-tunnel");
         ioThread = t;
         t.start();
+    }
+
+    /** Resolve aitun.cc once (system DNS → DoH → fallback IP) and append -s IP:6639.
+     *  MUST run on a worker thread — blocks on DNS. */
+    private static String[] buildServerCmd(String[] cmd) {
+        String serverIp = null;
+        try {
+            serverIp = java.net.InetAddress.getByName(SERVER_HOST).getHostAddress();
+            ProfileManager.dispatchLog("[aitun] server resolved via system DNS: " + serverIp);
+        } catch (Exception e) {
+            ProfileManager.dispatchLog("[aitun] system DNS failed: " + e.getMessage());
+        }
+        if (serverIp == null || !serverIp.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+            serverIp = dohResolve(SERVER_HOST);
+            if (serverIp != null)
+                ProfileManager.dispatchLog("[aitun] server resolved via DoH(223.5.5.5): " + serverIp);
+        }
+        if (serverIp == null) {
+            serverIp = SERVER_FALLBACK_IP;
+            ProfileManager.dispatchLog("[aitun] DNS unavailable, using fallback IP: " + serverIp);
+        }
+        try {
+            String[] cmd2 = new String[cmd.length + 2];
+            cmd2[0] = cmd[0];
+            cmd2[1] = "-s";
+            cmd2[2] = serverIp + ":6639";
+            System.arraycopy(cmd, 1, cmd2, 3, cmd.length - 1);
+            return cmd2;
+        } catch (Exception e) {
+            ProfileManager.dispatchLog("[aitun] -s param failed, using hostname: " + e.getMessage());
+            return cmd;
+        }
     }
 
     public static synchronized void stop() {

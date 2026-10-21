@@ -116,7 +116,13 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         findViewById(R.id.btn_regen).setOnClickListener(v -> {
             String t = Prefs.randomToken();
             tokenInput.setText(t);
-            Toast.makeText(this, "已重新生成，保存设置后生效", Toast.LENGTH_SHORT).show();
+            // 立即持久化 + 热应用到运行中的 API server，无需重启服务/隧道
+            new Prefs(this).setToken(t);
+            Api api = CdpService.api();
+            if (api != null) api.setToken(t);
+            ProfileManager.dispatchLog("[config] token regenerated"
+                    + (api != null ? " and hot-applied" : " (saved; applies when server starts)"));
+            Toast.makeText(this, "已重新生成并立即生效", Toast.LENGTH_SHORT).show();
         });
 
         findViewById(R.id.btn_save).setOnClickListener(v -> saveSettings());
@@ -168,7 +174,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 Toast.makeText(this, "子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
                 return;
             }
-            TunnelManager.start(getApplicationContext(), p.tunnelMode(), p.aitunKey(), CdpService.api().port());
+            TunnelManager.start(getApplicationContext(), p.tunnelMode(), p.aitunKey(), p.port());
         }
         ui.postDelayed(this::render, 500);
     }
@@ -196,40 +202,43 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         Prefs p = new Prefs(this);
         String oldToken = p.token();
         String newToken = tokenInput.getText().toString().trim();
-        boolean tunnelWasUp = TunnelManager.state() == TunnelManager.State.ONLINE;
         String tunnelMode = ((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).isChecked()
                 ? "subdomain" : "temp";
         String key = aitunKeyInput.getText().toString().trim();
+        boolean modeChanged = !tunnelMode.equals(p.tunnelMode());
+        boolean keyChanged = !key.equals(p.aitunKey());
 
         p.setAitunKey(key);
         p.setTunnelMode(tunnelMode);
-        if (!newToken.isEmpty() && !newToken.equals(oldToken)) {
+        boolean tokenChanged = !newToken.isEmpty() && !newToken.equals(oldToken);
+        if (tokenChanged) {
             p.setToken(newToken);
+            // 热应用：不重启服务、不断隧道、Profile 全程不动，下一个请求即用新 token
+            Api api = CdpService.api();
+            if (api != null) api.setToken(newToken);
         }
         ProfileManager.saveProfiles();
-        Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
+        ProfileManager.dispatchLog("[config] settings saved"
+                + (tokenChanged ? " (token hot-applied)" : ""));
+        Toast.makeText(this, tokenChanged ? "设置已保存，token 已立即生效" : "设置已保存",
+                Toast.LENGTH_SHORT).show();
 
-        // restart server to apply token; restart tunnel if it was online
-        boolean wasRunning = CdpService.isRunning();
-        if (wasRunning) {
+        // 只有隧道在跑且 mode/key 确实变化时才重启隧道；token 变化不再牵连隧道/服务
+        TunnelManager.State ts = TunnelManager.state();
+        boolean tunnelActive = ts == TunnelManager.State.ONLINE || ts == TunnelManager.State.CONNECTING;
+        if (tunnelActive && (modeChanged || keyChanged)) {
             TunnelManager.stop();
-            Intent stop = new Intent(this, CdpService.class).setAction(CdpService.ACTION_STOP);
-            startService(stop);
-        }
-        Intent run = new Intent(this, CdpService.class).setAction(CdpService.ACTION_RUN);
-        if (Build.VERSION.SDK_INT >= 26) startForegroundService(run);
-        else startService(run);
-        if (tunnelWasUp) {
+            ProfileManager.dispatchLog("[aitun] restarting tunnel with new settings");
             if (tunnelMode.equals("subdomain") && key.isEmpty()) {
                 // never silently restart as something else; say exactly what was skipped
-                ProfileManager.dispatchLog("[aitun] auto-restart skipped: subdomain mode without key");
-                Toast.makeText(this, "隧道未自动重启：子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
+                ProfileManager.dispatchLog("[aitun] restart skipped: subdomain mode without key");
+                Toast.makeText(this, "隧道已停止：子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
             } else {
                 ui.postDelayed(() -> TunnelManager.start(getApplicationContext(), tunnelMode, key,
-                        new Prefs(this).port()), 2500);
+                        new Prefs(this).port()), 800);
             }
         }
-        ui.postDelayed(this::render, 600);
+        ui.postDelayed(this::render, 400);
     }
 
     @Override

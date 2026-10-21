@@ -21,12 +21,19 @@ import java.security.MessageDigest;
  */
 public class Api extends HttpServer {
 
-    private final String token;
+    // volatile：UI 线程重新生成/手填 token 后 setToken() 热生效，无需重启服务
+    private volatile String token;
     private final long startedAt = System.currentTimeMillis();
 
     public Api(int port, String token) {
         super(port);
         this.token = token;
+    }
+
+    /** Hot-swap the auth token; takes effect on the very next request. */
+    public void setToken(String t) {
+        if (t == null || t.isEmpty()) return;
+        this.token = t;
     }
 
     private static Response json(int status, JSONObject o) {
@@ -79,7 +86,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.3.0");
+            o.put("version", "1.3.1");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -87,7 +94,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.3.0");
+            o.put("version", "1.3.1");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -318,9 +325,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.3.0");
+                    o.put("Browser", "samcdp-webview/1.3.1");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.3.0 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.3.1 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -389,7 +396,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.3.0</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.3.1</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");
