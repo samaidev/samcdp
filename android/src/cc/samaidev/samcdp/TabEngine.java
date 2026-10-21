@@ -8,6 +8,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -129,10 +130,15 @@ public class TabEngine {
     private static final Map<String, Set<String>> VISITED = new ConcurrentHashMap<>();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
+    // v1.3.7 popups: popup tab id -> opener tab id (where to hand the screen
+    // back when the popup closes itself via window.close())
+    private static final Map<String, String> POPUP_OPENER = new ConcurrentHashMap<>();
+
     private static String profileName;
     private static int slot;
     private static long autoStopAtMs;
     private static Runnable durationTimer;
+    private static volatile Context engineCtx; // application context used for popup WebView creation
 
     // ------------------------------------------------------------ visibility (human handover)
 
@@ -150,6 +156,7 @@ public class TabEngine {
         final String id;
         volatile String url;
         volatile String title = "";
+        volatile String ua;   // settings UA this tab was created with (popups inherit it)
         volatile long openedAtMs;
         WebView webView; // main thread of the runner process only
 
@@ -164,6 +171,7 @@ public class TabEngine {
 
     static void start(Context ctx, String name, int durationMin) {
         profileName = name;
+        engineCtx = ctx.getApplicationContext() != null ? ctx.getApplicationContext() : ctx;
         slot = 0;
         log("[" + name + "] engine starting (isolated cookie jar)");
         restoreCookies(ctx);
@@ -200,6 +208,7 @@ public class TabEngine {
             });
             tabs.clear();
         }
+        POPUP_OPENER.clear();
         log("[" + profileName + "] engine stopped (cookies persisted)");
     }
 
@@ -231,87 +240,12 @@ public class TabEngine {
             } catch (Exception ignored) {
             }
             List<TabItem> tabs = TABS.computeIfAbsent(profileName, k -> new CopyOnWriteArrayList<>());
-            String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
             Set<String> visited = VISITED.computeIfAbsent(profileName, k -> ConcurrentHashMap.newKeySet());
             TabItem[] holder = new TabItem[1];
             runAndWait(() -> {
                 try {
-                    TabItem t = new TabItem(id, url);
-                    WebView wv = new WebView(ctx);
-                    WebSettings st = wv.getSettings();
-                    st.setJavaScriptEnabled(true);
-                    st.setDomStorageEnabled(true);
-                    st.setDatabaseEnabled(true);
-                    st.setLoadWithOverviewMode(true);
-                    st.setUseWideViewPort(true);
-                    if (ua != null && !ua.isEmpty()) {
-                        st.setUserAgentString(ua);
-                    } else {
-                        st.setUserAgentString(MOBILE_UA);
-                    }
-
-                    // --- stealth hardening (phone behaviour: pinch-zoom, no buttons) ---
-                    st.setSupportZoom(true);
-                    st.setBuiltInZoomControls(true);
-                    st.setDisplayZoomControls(false);
-                    st.setMediaPlaybackRequiresUserGesture(false);
-                    st.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-                    try { android.webkit.WebSettings.class.getMethod("setDisabledActionModeMenuItems", int.class).invoke(st, 1); } catch(Exception ignored) {}
-
-                    // color scheme: render pages EXACTLY as Chrome would — opt out of
-                    // every system darkening hook (ColorOS/Android dark mode inverts
-                    // the WebView background layer but not text → white-on-white)
-                    if (Build.VERSION.SDK_INT >= 33) {
-                        st.setAlgorithmicDarkeningAllowed(false);
-                    }
-                    if (Build.VERSION.SDK_INT >= 29) {
-                        // deprecated at 33 in favour of the call above; still respected
-                        st.setForceDark(android.webkit.WebSettings.FORCE_DARK_OFF);
-                    }
-
-                    CookieManager cm = CookieManager.getInstance();
-                    cm.setAcceptCookie(true);
-                    cm.setAcceptThirdPartyCookies(wv, true);
-                    wv.setWebViewClient(new WebViewClient() {
-                        @Override
-                        public void onPageStarted(WebView view, String u, android.graphics.Bitmap favicon) {
-                            // Inject stealth JS BEFORE page scripts run
-                            view.evaluateJavascript(STEALTH_JS, null);
-                        }
-
-                        @Override
-                        public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                            // Pass through normally — no interception needed
-                            return null;
-                        }
-
-                        @Override
-                        public boolean shouldOverrideUrlLoading(WebView view, String u) {
-                            return u != null && !u.startsWith("http://") && !u.startsWith("https://")
-                                    && !u.startsWith("file://") && !u.startsWith("about:")
-                                    && !u.startsWith("data:");
-                        }
-
-                        @Override
-                        public void onPageFinished(WebView view, String u) {
-                            t.title = view.getTitle() == null ? "" : view.getTitle();
-                            t.url = u;
-                            track(visited, u);
-                            notifyPageUrl(t.id, u);
-                        }
-
-                        @Override
-                        public void doUpdateVisitedHistory(WebView view, String u, boolean reload) {
-                            t.url = u;
-                            track(visited, u);
-                            notifyPageUrl(t.id, u);
-                        }
-                    });
-                    wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
-                            android.view.View.MeasureSpec.makeMeasureSpec(headlessH, android.view.View.MeasureSpec.EXACTLY));
-                    wv.layout(0, 0, headlessW, headlessH);
-                    t.webView = wv;
-                    wv.loadUrl(url);
+                    TabItem t = newTabItem(ctx, url, ua, visited);
+                    t.webView.loadUrl(url);
                     tabs.add(t);
                     holder[0] = t;
                 } catch (Exception e) {
@@ -327,6 +261,242 @@ public class TabEngine {
             return wrap.toString();
         } catch (Exception e) {
             return err(e.getMessage());
+        }
+    }
+
+    // ----------------------------------------------- tab construction (shared by openTab and popups)
+
+    /**
+     * Build a fully-configured stealth WebView-backed tab: settings, cookie
+     * policy, WebViewClient (stealth injection + URL tracking) and — since
+     * v1.3.7 — a WebChromeClient that turns JS window.open() / target=_blank
+     * popups into REAL new tabs. Google sign-in popups need a live opener:
+     * without multi-window support the popup REPLACED the opener in the same
+     * WebView (window.opener === window) and accounts.google.com/gsi/transform
+     * sat white forever waiting for a parent that no longer existed.
+     * Main thread only. Does NOT load a URL and does NOT register the tab.
+     */
+    private static TabItem newTabItem(Context ctx, String url, String ua, Set<String> visited) {
+        String id = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        TabItem t = new TabItem(id, url);
+        if (ua != null && !ua.isEmpty()) t.ua = ua;
+        WebView wv = new WebView(ctx);
+        WebSettings st = wv.getSettings();
+        st.setJavaScriptEnabled(true);
+        st.setDomStorageEnabled(true);
+        st.setDatabaseEnabled(true);
+        st.setLoadWithOverviewMode(true);
+        st.setUseWideViewPort(true);
+        if (ua != null && !ua.isEmpty()) {
+            st.setUserAgentString(ua);
+        } else {
+            st.setUserAgentString(MOBILE_UA);
+        }
+
+        // --- stealth hardening (phone behaviour: pinch-zoom, no buttons) ---
+        st.setSupportZoom(true);
+        st.setBuiltInZoomControls(true);
+        st.setDisplayZoomControls(false);
+        st.setMediaPlaybackRequiresUserGesture(false);
+        st.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        try { android.webkit.WebSettings.class.getMethod("setDisabledActionModeMenuItems", int.class).invoke(st, 1); } catch(Exception ignored) {}
+
+        // color scheme: render pages EXACTLY as Chrome would — opt out of
+        // every system darkening hook (ColorOS/Android dark mode inverts
+        // the WebView background layer but not text → white-on-white)
+        if (Build.VERSION.SDK_INT >= 33) {
+            st.setAlgorithmicDarkeningAllowed(false);
+        }
+        if (Build.VERSION.SDK_INT >= 29) {
+            // deprecated at 33 in favour of the call above; still respected
+            st.setForceDark(android.webkit.WebSettings.FORCE_DARK_OFF);
+        }
+
+        // popups (v1.3.7): keep window.open() semantics — a NEW window, not a
+        // same-WebView navigation. Without this the opener relationship dies
+        // and GIS/FedCM popup pages never render.
+        st.setSupportMultipleWindows(true);
+        st.setJavaScriptCanOpenWindowsAutomatically(true);
+
+        CookieManager cm = CookieManager.getInstance();
+        cm.setAcceptCookie(true);
+        cm.setAcceptThirdPartyCookies(wv, true);
+        wv.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String u, android.graphics.Bitmap favicon) {
+                // Inject stealth JS BEFORE page scripts run
+                view.evaluateJavascript(STEALTH_JS, null);
+            }
+
+            @Override
+            public android.webkit.WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                // Pass through normally — no interception needed
+                return null;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String u) {
+                return u != null && !u.startsWith("http://") && !u.startsWith("https://")
+                        && !u.startsWith("file://") && !u.startsWith("about:")
+                        && !u.startsWith("data:");
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String u) {
+                t.title = view.getTitle() == null ? "" : view.getTitle();
+                t.url = u;
+                track(visited, u);
+                notifyPageUrl(t.id, u);
+            }
+
+            @Override
+            public void doUpdateVisitedHistory(WebView view, String u, boolean reload) {
+                t.url = u;
+                track(visited, u);
+                notifyPageUrl(t.id, u);
+            }
+        });
+        wv.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                                          android.os.Message resultMsg) {
+                try {
+                    TabItem parent = tabByWebView(view);
+                    TabItem popup = createPopupTab(
+                            engineCtx != null ? engineCtx : view.getContext(), parent);
+                    if (popup == null || popup.webView == null) return false;
+                    android.webkit.WebView.WebViewTransport tr =
+                            (android.webkit.WebView.WebViewTransport) resultMsg.obj;
+                    tr.setWebView(popup.webView);
+                    resultMsg.sendToTarget();
+                    // defer the visible swap — never re-parent views mid-callback
+                    MAIN.post(() -> presentPopup(popup, parent));
+                    return true;
+                } catch (Exception e) {
+                    log("[" + profileName + "] onCreateWindow failed: " + e.getMessage());
+                    return false;
+                }
+            }
+
+            @Override
+            public void onCloseWindow(WebView window) {
+                try {
+                    TabItem closing = tabByWebView(window);
+                    if (closing != null) closePopupTab(closing);
+                } catch (Exception e) {
+                    log("[" + profileName + "] onCloseWindow failed: " + e.getMessage());
+                }
+            }
+        });
+        wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(headlessH, android.view.View.MeasureSpec.EXACTLY));
+        wv.layout(0, 0, headlessW, headlessH);
+        t.webView = wv;
+        return t;
+    }
+
+    // ------------------------------------------------------------ popups (JS window.open / target=_blank)
+
+    /** Find the tab whose WebView is the given instance. Main thread only. */
+    private static TabItem tabByWebView(WebView wv) {
+        if (profileName == null) return null;
+        List<TabItem> tabs = TABS.get(profileName);
+        if (tabs == null) return null;
+        for (TabItem t : tabs) if (t.webView == wv) return t;
+        return null;
+    }
+
+    /**
+     * Register the freshly requested popup as a new tab of this profile. The
+     * real URL is not known yet — the WebViewTransport handshake loads it
+     * right after resultMsg.sendToTarget() and the WebViewClient records it
+     * like any other tab. Main thread only (onCreateWindow).
+     */
+    private static TabItem createPopupTab(Context ctx, TabItem opener) {
+        try {
+            if (profileName == null) return null;
+            Set<String> visited = VISITED.computeIfAbsent(profileName, k -> ConcurrentHashMap.newKeySet());
+            String ua = opener != null ? opener.ua : null;
+            TabItem t = newTabItem(ctx, "(popup)", ua, visited);
+            TABS.computeIfAbsent(profileName, k -> new CopyOnWriteArrayList<>()).add(t);
+            POPUP_OPENER.put(t.id, opener == null ? "" : opener.id);
+            log("[" + profileName + "] popup tab " + t.id + " opened from "
+                    + (opener == null ? "(unknown)" : opener.id));
+            return t;
+        } catch (Exception e) {
+            log("[" + profileName + "] popup create failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * If the opener was the tab on screen, swap the popup in immediately so
+     * the user sees the popup (Google sign-in etc.). Popups triggered while
+     * nothing is visible stay headless and appear in the switcher / /tabs.
+     * Deferred off onCreateWindow via MAIN.post — never re-parent views in
+     * the middle of a WebView callback. Main thread only.
+     */
+    private static void presentPopup(TabItem popup, TabItem opener) {
+        try {
+            android.app.Activity host = visibleHost;
+            ViewGroup root = visibleRoot;
+            if (host == null || root == null || opener == null || popup == null) return;
+            if (!opener.id.equals(visibleTabId)) return; // opener not on screen
+            detachAttached();
+            attachToRoot(popup, root);
+            visibleHost = host;
+            visibleRoot = root;
+            visibleTabId = popup.id;
+            notifyPageUrl(popup.id, popup.url); // address box follows the swap
+            log("[" + profileName + "] popup tab " + popup.id + " now visible");
+        } catch (Exception e) {
+            log("[" + profileName + "] presentPopup failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * window.close() (WebChromeClient.onCloseWindow): destroy the tab and
+     * hand the screen back to its opener — or drop to headless if there is
+     * none. Main thread only.
+     */
+    static synchronized void closePopupTab(TabItem t) {
+        try {
+            List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+            if (tabs == null || !tabs.contains(t)) return;
+            boolean wasVisible = t.id != null && t.id.equals(visibleTabId);
+            String openerId = POPUP_OPENER.remove(t.id);
+            android.app.Activity host = visibleHost;
+            ViewGroup root = visibleRoot;
+            if (wasVisible) detachAttached(); // off the root BEFORE destroy
+            runAndWait(() -> {
+                try {
+                    t.webView.stopLoading();
+                    t.webView.loadUrl("about:blank");
+                    t.webView.destroy();
+                } catch (Exception ignored) {
+                }
+            });
+            tabs.remove(t);
+            log("[" + profileName + "] tab " + t.id + " closed by window.close()"
+                    + (wasVisible ? " (was visible)" : ""));
+            if (wasVisible) {
+                TabItem back = null;
+                if (openerId != null && !openerId.isEmpty()) {
+                    for (TabItem x : tabs) if (x.id.equals(openerId)) back = x;
+                }
+                if (back != null && back.webView != null && root != null && host != null) {
+                    attachToRoot(back, root);
+                    visibleHost = host;
+                    visibleRoot = root;
+                    visibleTabId = back.id;
+                    notifyPageUrl(back.id, back.url);
+                    log("[" + profileName + "] returned to opener tab " + back.id);
+                } else {
+                    hide(); // nothing to hand back to → headless
+                }
+            }
+        } catch (Exception e) {
+            log("[" + profileName + "] closePopupTab failed: " + e.getMessage());
         }
     }
 
@@ -360,6 +530,7 @@ public class TabEngine {
             }
         });
         tabs.remove(f);
+        POPUP_OPENER.remove(f.id);
         return "{\"ok\":true}";
     }
 
