@@ -297,12 +297,14 @@ public class TabEngine {
                             t.title = view.getTitle() == null ? "" : view.getTitle();
                             t.url = u;
                             track(visited, u);
+                            notifyPageUrl(t.id, u);
                         }
 
                         @Override
                         public void doUpdateVisitedHistory(WebView view, String u, boolean reload) {
                             t.url = u;
                             track(visited, u);
+                            notifyPageUrl(t.id, u);
                         }
                     });
                     wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
@@ -629,6 +631,62 @@ public class TabEngine {
             }
         });
         return "{\"ok\":true,\"reloaded\":\"" + tid + "\"}";
+    }
+
+    /** URL of the tab currently attached to the visible host (or null). */
+    static String visibleTabUrl() {
+        String tid = visibleTabId;
+        if (tid == null || profileName == null) return null;
+        List<TabItem> tabs = TABS.get(profileName);
+        if (tabs != null) for (TabItem t : tabs) if (t.id.equals(tid)) return t.url;
+        return null;
+    }
+
+    /** TabActivity (or /navigate) wants to load a manually entered address in the visible tab. */
+    static String navigateVisible(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return err("empty url");
+        String u = raw.trim();
+        if (!(u.startsWith("http://") || u.startsWith("https://"))) {
+            // same anti-hijack policy as shouldOverrideUrlLoading: only http(s) gets through
+            if (u.contains("://")) return err("non-http(s) url blocked: " + u);
+            u = "https://" + u;
+        }
+        String tid = visibleTabId;
+        if (tid == null) return err("no visible tab");
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        TabItem target = null;
+        if (tabs != null) for (TabItem t : tabs) if (t.id.equals(tid)) target = t;
+        if (target == null || target.webView == null) return err("tab has no webview");
+        final String url = u;
+        final TabItem t = target;
+        runAndWait(() -> {
+            try {
+                t.url = url;
+                t.webView.loadUrl(url);
+                log("[" + profileName + "] navigate visible tab " + t.id + " -> " + url);
+            } catch (Exception e) {
+                log("navigate failed: " + e.getMessage());
+            }
+        });
+        return "{\"ok\":true,\"tab\":\"" + tid + "\",\"url\":\"" + url + "\"}";
+    }
+
+    /** Listener for URL changes of the visible tab (drives TabActivity's address box). */
+    interface PageUrlListener {
+        void onPageUrl(String tabId, String url);
+    }
+
+    private static volatile PageUrlListener pageUrlListener;
+
+    static void setPageUrlListener(PageUrlListener l) {
+        pageUrlListener = l;
+    }
+
+    private static void notifyPageUrl(String tabId, String url) {
+        PageUrlListener l = pageUrlListener;
+        if (l == null) return;
+        final PageUrlListener ll = l;
+        MAIN.post(() -> ll.onPageUrl(tabId, url));
     }
 
     /** Activity.onDestroy -> full detach: finish-safe, idempotent. */

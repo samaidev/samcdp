@@ -13,6 +13,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -52,6 +53,7 @@ public class TabActivity extends Activity {
 
     private FrameLayout content;
     private TextView pill;
+    private EditText urlBox;
     private AlertDialog switcherDialog;
 
     @Override
@@ -66,7 +68,8 @@ public class TabActivity extends Activity {
         root.addView(content, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // floating switcher pill (profile name + switch glyph), top-left overlay
+        // floating switcher pill (profile name + switch glyph), first element of the
+        // top bar so the address bar can share the row without overlapping it
         float den = getResources().getDisplayMetrics().density;
         pill = new TextView(this);
         pill.setTextSize(12);
@@ -80,23 +83,67 @@ public class TabActivity extends Activity {
         bg.setColor(0xAA000000);
         bg.setCornerRadius(20 * den);
         pill.setBackground(bg);
-        FrameLayout.LayoutParams plp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        plp.gravity = Gravity.TOP | Gravity.START;
-        plp.leftMargin = Math.round(10 * den);
-        plp.topMargin = Math.round(10 * den);
-        pill.setLayoutParams(plp);
         pill.setOnClickListener(v -> openSwitcher());
         String pn = TabEngine.profileName();
         pill.setText((pn == null ? "" : pn + "  ") + "≡");
-        root.addView(pill);
 
-        // top-right cluster: [⟳ 刷新] [✕ 隐藏] — refresh reloads the visible page
-        // (recovers stuck/blank pages), hide detaches back to headless
-        LinearLayout topBtns = new LinearLayout(this);
-        topBtns.setOrientation(LinearLayout.HORIZONTAL);
-        topBtns.setGravity(Gravity.CENTER_VERTICAL);
+        // ===== top bar: [profile pill] [address bar] [前往] [⟳] [✕] =====
+        LinearLayout topBar = new LinearLayout(this);
+        topBar.setOrientation(LinearLayout.HORIZONTAL);
+        topBar.setGravity(Gravity.CENTER_VERTICAL);
 
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plp.rightMargin = Math.round(8 * den);
+        topBar.addView(pill, plp);
+
+        // manual address entry: shows the visible tab's current URL, editable
+        urlBox = new EditText(this);
+        urlBox.setTextSize(12);
+        urlBox.setTextColor(0xFFFFFFFF);
+        urlBox.setHintTextColor(0x88FFFFFF);
+        urlBox.setHint("输入网址，如 example.com");
+        urlBox.setSingleLine(true);
+        urlBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        urlBox.setBackgroundResource(0);
+        urlBox.setPadding(Math.round(14 * den), Math.round(6 * den), Math.round(14 * den), Math.round(6 * den));
+        urlBox.setHorizontalFadingEdgeEnabled(true);
+        GradientDrawable ubg = new GradientDrawable();
+        ubg.setColor(0xAA000000);
+        ubg.setCornerRadius(20 * den);
+        urlBox.setBackground(ubg);
+        urlBox.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
+                goUrl();
+                return true;
+            }
+            return false;
+        });
+        LinearLayout.LayoutParams ulp = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        ulp.rightMargin = Math.round(8 * den);
+        topBar.addView(urlBox, ulp);
+
+        // 前往: load the typed address in the visible tab
+        TextView goBtn = new TextView(this);
+        goBtn.setTextSize(12);
+        goBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        goBtn.setTextColor(0xFFFFFFFF);
+        goBtn.setSingleLine(true);
+        goBtn.setGravity(Gravity.CENTER);
+        goBtn.setPadding(Math.round(12 * den), padV, Math.round(12 * den), padV);
+        GradientDrawable gbg = new GradientDrawable();
+        gbg.setColor(0xAA000000);
+        gbg.setCornerRadius(20 * den);
+        goBtn.setBackground(gbg);
+        goBtn.setText("前往");
+        goBtn.setOnClickListener(v -> goUrl());
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        glp.rightMargin = Math.round(8 * den);
+        topBar.addView(goBtn, glp);
+
+        // ⟳: reload the visible page (recovers stuck/blank pages)
         TextView refreshBtn = new TextView(this);
         refreshBtn.setTextSize(12);
         refreshBtn.setTypeface(Typeface.DEFAULT_BOLD);
@@ -108,7 +155,7 @@ public class TabActivity extends Activity {
         rbg.setColor(0xAA000000);
         rbg.setCornerRadius(20 * den);
         refreshBtn.setBackground(rbg);
-        refreshBtn.setText("⟳ 刷新");
+        refreshBtn.setText("⟳");
         refreshBtn.setOnClickListener(v -> {
             String r = TabEngine.reloadVisible();
             if (r != null && r.contains("\"ok\":false")) Toast2("没有可刷新的页面");
@@ -116,8 +163,9 @@ public class TabActivity extends Activity {
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rlp.rightMargin = Math.round(8 * den);
-        topBtns.addView(refreshBtn, rlp);
+        topBar.addView(refreshBtn, rlp);
 
+        // ✕: detach the WebView straight back to headless
         TextView hideBtn = new TextView(this);
         hideBtn.setTextSize(12);
         hideBtn.setTypeface(Typeface.DEFAULT_BOLD);
@@ -129,20 +177,25 @@ public class TabActivity extends Activity {
         hbg.setColor(0xAA000000);
         hbg.setCornerRadius(20 * den);
         hideBtn.setBackground(hbg);
-        hideBtn.setText("✕ 隐藏");
+        hideBtn.setText("✕");
         hideBtn.setOnClickListener(v -> {
             TabEngine.hide(); // finishes the host itself, WebView back to headless
             finish();
         });
-        topBtns.addView(hideBtn);
+        topBar.addView(hideBtn);
 
-        FrameLayout.LayoutParams hlp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hlp.gravity = Gravity.TOP | Gravity.END;
-        hlp.topMargin = Math.round(10 * den);
-        hlp.rightMargin = Math.round(10 * den);
-        topBtns.setLayoutParams(hlp);
-        root.addView(topBtns);
+        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tlp.gravity = Gravity.TOP;
+        tlp.topMargin = Math.round(10 * den);
+        tlp.leftMargin = Math.round(10 * den);
+        tlp.rightMargin = Math.round(10 * den);
+        topBar.setLayoutParams(tlp);
+        root.addView(topBar);
+
+        // keep the keyboard closed on entry — the address bar must not steal focus
+        root.setFocusableInTouchMode(true);
+        root.requestFocus();
 
         String want = getIntent() != null ? getIntent().getStringExtra("tab") : null;
         String res = TabEngine.attachRequested(this, content, want);
@@ -155,7 +208,50 @@ public class TabActivity extends Activity {
             root.addView(tv, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             tv.postDelayed(this::finish, 1500);
+        } else {
+            updateUrlBox();
+            // address box follows the visible tab's URL (page navigations, redirects)
+            TabEngine.setPageUrlListener((tabId, url) -> {
+                String vt = TabEngine.visibleTabId();
+                if (tabId != null && tabId.equals(vt)) updateUrlBox();
+            });
         }
+    }
+
+    /** Reflect the visible tab's current URL in the address bar (unless being edited). */
+    private void updateUrlBox() {
+        if (urlBox == null || urlBox.hasFocus()) return;
+        String u = TabEngine.visibleTabUrl();
+        if (u != null && !u.equals(urlBox.getText() == null ? "" : urlBox.getText().toString())) {
+            urlBox.setText(u);
+        }
+    }
+
+    /** 前往 / keyboard Go: load the typed address in the visible tab. */
+    private void goUrl() {
+        if (urlBox == null) return;
+        String raw = urlBox.getText() == null ? "" : urlBox.getText().toString();
+        if (raw.trim().isEmpty()) {
+            Toast2("请输入网址");
+            return;
+        }
+        String r = TabEngine.navigateVisible(raw);
+        if (r == null || !r.contains("\"ok\":true")) {
+            Toast2("打开失败：没有显示中的页面");
+            return;
+        }
+        hideKeyboard();
+        String u = TabEngine.visibleTabUrl();
+        if (u != null) urlBox.setText(u);
+    }
+
+    private void hideKeyboard() {
+        Object svc = getSystemService(INPUT_METHOD_SERVICE);
+        if (svc instanceof android.view.inputmethod.InputMethodManager && urlBox != null) {
+            ((android.view.inputmethod.InputMethodManager) svc)
+                    .hideSoftInputFromWindow(urlBox.getWindowToken(), 0);
+        }
+        if (urlBox != null) urlBox.clearFocus();
     }
 
     @Override
@@ -165,6 +261,7 @@ public class TabActivity extends Activity {
         if (content == null) return;
         String want = intent != null ? intent.getStringExtra("tab") : null;
         TabEngine.attachRequested(this, content, want);
+        updateUrlBox();
     }
 
     @Override
@@ -175,6 +272,7 @@ public class TabActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        TabEngine.setPageUrlListener(null);
         TabEngine.detach();
         super.onDestroy();
     }
@@ -286,6 +384,7 @@ public class TabActivity extends Activity {
                 }
             } else if (e.mine) {
                 TabEngine.switchTab(this, e.tabId);
+                updateUrlBox();
             } else {
                 try {
                     Intent i = new Intent(this, Class.forName(
