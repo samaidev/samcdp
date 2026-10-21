@@ -694,6 +694,8 @@ public class TabEngine {
         detachAttached();
         attachToRoot(t, root);
         visibleHost = host;
+        visibleRoot = root; // v1.3.7: also record the root — switchTab/presentPopup
+                            // need it to swap WebViews in-place after a /show
         visibleTabId = t.id;
         log("[" + profileName + "] webview visible (human handover), tab " + t.id);
         return null;
