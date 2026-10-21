@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.webkit.CookieManager;
@@ -237,6 +238,17 @@ public class TabEngine {
                     st.setMediaPlaybackRequiresUserGesture(false);
                     st.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
                     try { android.webkit.WebSettings.class.getMethod("setDisabledActionModeMenuItems", int.class).invoke(st, 1); } catch(Exception ignored) {}
+
+                    // color scheme: render pages EXACTLY as Chrome would — opt out of
+                    // every system darkening hook (ColorOS/Android dark mode inverts
+                    // the WebView background layer but not text → white-on-white)
+                    if (Build.VERSION.SDK_INT >= 33) {
+                        st.setAlgorithmicDarkeningAllowed(false);
+                    }
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        // deprecated at 33 in favour of the call above; still respected
+                        st.setForceDark(android.webkit.WebSettings.FORCE_DARK_OFF);
+                    }
 
                     CookieManager cm = CookieManager.getInstance();
                     cm.setAcceptCookie(true);
@@ -491,6 +503,10 @@ public class TabEngine {
             root.addView(t.webView, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
             t.webView.onResume();
+            // nudge the compositor: headless-grown WebViews sometimes keep their
+            // last (blank) texture after re-parenting without an explicit draw kick
+            t.webView.invalidate();
+            root.requestLayout();
         } catch (Exception e) {
             log("attach failed: " + e.getMessage());
         }

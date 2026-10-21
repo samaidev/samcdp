@@ -8,5 +8,9 @@
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:navigationBarColor">@color/bg</item>
         <item name="android:textColor">@color/text</item>
+        <!-- opt out of Android 10+ View force-dark: vendor dark-mode inversion
+             (ColorOS) mangles WebView pages — background layer inverted, text
+             layer untouched → white text on white background -->
+        <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

@@ -442,26 +442,48 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             // HTTP to the runner must leave the main thread (NetworkOnMainThreadException
             // made this button silently fail with only an error toast in <= v1.3.1)
             new Thread(() -> {
-                ProfileManager.ProxyResult r;
+                boolean ok = false;
+                String errMsg = null;
                 try {
-                    r = ProfileManager.show(pr, null);
+                    ProfileManager.ProxyResult res = ProfileManager.show(pr, null);
+                    // the runner answers HTTP 200 even for {ok:false,error:...} —
+                    // only the body tells success from failure
+                    org.json.JSONObject j = new org.json.JSONObject(new String(res.payload, "UTF-8"));
+                    ok = res.status == 200 && j.optBoolean("ok");
+                    if (!ok) {
+                        String e2 = j.optString("error");
+                        errMsg = e2.isEmpty() ? "HTTP " + res.status : e2;
+                    }
                 } catch (Exception e) {
-                    r = null;
-                    ProfileManager.dispatchLog("[" + pr.name + "] show failed: " + e.getMessage());
+                    errMsg = e.getMessage();
+                    ProfileManager.dispatchLog("[" + pr.name + "] show failed: " + errMsg);
                 }
-                final ProfileManager.ProxyResult res = r;
+                // ColorOS can still silently drop the activity launch even WITH the
+                // overlay permission (后台弹出界面/自启动 restriction) — detect it by
+                // polling the runner's /visible instead of pretending success
+                boolean cameUp = false;
+                if (ok) {
+                    for (int i = 0; i < 8 && !cameUp; i++) {
+                        try { Thread.sleep(300); } catch (InterruptedException e) { break; }
+                        try {
+                            ProfileManager.ProxyResult vr = ProfileManager.visible(pr);
+                            if (vr.status == 200 && new org.json.JSONObject(new String(vr.payload, "UTF-8"))
+                                    .optBoolean("visible")) cameUp = true;
+                        } catch (Exception ignored) {}
+                    }
+                }
+                final boolean fOk = ok;
+                final boolean fUp = cameUp;
+                final String fErr = errMsg;
                 ui.post(() -> {
                     show.setEnabled(true);
-                    if (res == null || res.status != 200) {
-                        String err = res == null ? "请求异常" : "HTTP " + res.status;
-                        if (res != null) {
-                            try {
-                                String e2 = new org.json.JSONObject(new String(res.payload, "UTF-8"))
-                                        .optString("error");
-                                if (!e2.isEmpty()) err = e2;
-                            } catch (Exception ignored) {}
-                        }
-                        Toast.makeText(this, "显示失败: " + err, Toast.LENGTH_LONG).show();
+                    if (!fOk) {
+                        Toast.makeText(this, "显示失败: " + fErr, Toast.LENGTH_LONG).show();
+                    } else if (!fUp) {
+                        Toast.makeText(this, "WebView 请求已发出但未显示：请在 系统设置→应用管理→samcdp "
+                                + "允许「后台弹出界面」和「自启动」", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(this, "WebView 已显示", Toast.LENGTH_SHORT).show();
                     }
                     ui.postDelayed(this::render, 500);
                 });
