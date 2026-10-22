@@ -86,7 +86,7 @@ irm https://raw.githubusercontent.com/samaidev/samcdp/main/install.ps1 | iex
 | `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动 Chrome（duration 必填） |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止 Chrome |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页 |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx` | 打开新标签页 |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&close_after=秒数&token=xxx` | 打开新标签页（**`close_after` 必填**：N 秒后自动关闭，1..604800） |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | 关闭标签页 |
 | — | `/<profile>/json/*` | CDP 原生协议透传 |
 
@@ -96,8 +96,8 @@ irm https://raw.githubusercontent.com/samaidev/samcdp/main/install.ps1 | iex
 # 启动 agent-1 的 Chrome（30 分钟超时）
 curl -X POST "https://你的地址/api/profiles/agent-1/start?token=你的Token&duration=30"
 
-# 打开 DeepSeek
-curl -X POST "https://你的地址/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&token=你的Token"
+# 打开 DeepSeek（close_after 必填：3600 秒 = 1 小时后自动关闭）
+curl -X POST "https://你的地址/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&close_after=3600&token=你的Token"
 
 # 列出标签页
 curl "https://你的地址/api/profiles/agent-1/tabs?token=你的Token"
@@ -116,6 +116,11 @@ TOKEN = "你的Token"
 
 # 启动 Chrome（30 分钟）
 requests.post(f"{BASE}/api/profiles/agent-1/start", params={"token": TOKEN, "duration": 30})
+
+# 打开标签页 —— close_after（秒）必填，到期标签自动关闭回收内存
+resp = requests.post(f"{BASE}/api/profiles/agent-1/tabs/new",
+                     params={"token": TOKEN, "url": "https://chat.deepseek.com", "close_after": 3600})
+print(resp.json())
 
 # 列出标签页
 resp = requests.get(f"{BASE}/api/profiles/agent-1/tabs", params={"token": TOKEN})
@@ -160,14 +165,15 @@ print(resp.json())
 | `DELETE` | `/api/profiles/<name>?token=xxx` | 删除 Profile |
 | `POST` | `/api/profiles/<name>/start?token=xxx&duration=分钟` | 启动（独立进程 Cookie 池） |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | 停止（Cookie 持久化） |
-| `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页 |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&ua=AGENT&token=xxx` | 打开标签页 |
+| `GET` | `/api/profiles/<name>/tabs?token=xxx` | 列出标签页（含 `auto_close_in_s` 剩余存活秒数） |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&close_after=秒数&ua=AGENT&token=xxx` | 打开标签页（**`close_after` 必填**：N 秒后自动关闭） |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | 关闭标签页 |
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | 标签页 PNG 截图 |
 | `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | 在标签页内执行 JS |
 | `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP 风格透传 |
 
 说明：
+- **`tabs/new` 的 `close_after` 为必填参数** —— 整数秒（1..604800），到期标签自动销毁并回收内存，如 `close_after=3600` = 1 小时；不传或非法值返回 HTTP 400 并附自解释错误信息。设计目的：强制智能体声明标签存活时长，防止开大量标签不关耗尽内存；人在手机 UI 上手动开标签（➕ / 显示WebView / 页面弹窗）默认 1 小时自动关闭。`GET /tabs` 每个标签返回 `auto_close_in_s`（剩余存活秒数）
 - 标签页默认以桌面 Chrome UA 渲染（1080x2340 headless），可用 `&ua=...` 覆盖
 - 非 http(s) 跳转（如 `baiduboxapp://` 深链）会被拦截，防止劫持
 - `duration` 到期自动关闭，与桌面版一致

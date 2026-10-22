@@ -217,8 +217,12 @@ public class ProfileManager {
         return proxy(p, "GET", "/tabs", null);
     }
 
-    public static ProxyResult openTab(Profile p, String url, String ua) {
-        return proxy(p, "POST", "/open?url=" + urlencode(url) + (ua != null ? "&ua=" + urlencode(ua) : ""), null);
+    /** v1.3.9: closeAfterSec (seconds) is REQUIRED — forwarded to the runner,
+     *  which auto-destroys the tab when the deadline passes. */
+    public static ProxyResult openTab(Profile p, String url, String ua, long closeAfterSec) {
+        return proxy(p, "POST", "/open?url=" + urlencode(url)
+                + (ua != null ? "&ua=" + urlencode(ua) : "")
+                + "&close_after=" + closeAfterSec, null);
     }
 
     public static ProxyResult closeTab(Profile p, String id) {

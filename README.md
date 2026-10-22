@@ -15,6 +15,7 @@ Remote Chrome automation for AI agents. Expose local Chrome browsers as public H
 - **Login Persistence** — Chrome user-data-dir preserves cookies and sessions across restarts; no need to re-login after restart
 - **Auto-Cleanup** — Automatically kills stale Chrome processes on startup to prevent window accumulation
 - **Duration-Based Auto-Shutdown** — Start Chrome with a time limit; auto-closes when expired
+- **Tab TTL Enforcement (close_after)** — Tabs opened via the API require an explicit `close_after` lifetime (seconds) and are auto-closed when it expires, so agents can no longer leak tabs and exhaust memory; tabs opened manually from the phone UI default to 1 hour
 - **System Tray Integration** — Native tray icon with run/stop/settings menu
 - **Cross-Platform** — Windows, Linux, macOS, Android
 
@@ -86,7 +87,7 @@ All endpoints require authentication via `?token=YOUR_TOKEN` or `Authorization: 
 | `POST` | `/api/profiles/<name>/start?token=xxx&duration=MINUTES` | Start Chrome (duration required) |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | Stop Chrome |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | List browser tabs |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&token=xxx` | Open a new tab |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&close_after=SECONDS&token=xxx` | Open a new tab (**`close_after` required**: auto-close after N seconds, 1..604800) |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | Close a tab |
 | — | `/<profile>/json/*` | Raw CDP protocol passthrough |
 
@@ -96,8 +97,8 @@ All endpoints require authentication via `?token=YOUR_TOKEN` or `Authorization: 
 # Start Chrome for agent-1 (30 minute limit)
 curl -X POST "https://YOUR_URL/api/profiles/agent-1/start?token=YOUR_TOKEN&duration=30"
 
-# Open DeepSeek
-curl -X POST "https://YOUR_URL/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&token=YOUR_TOKEN"
+# Open DeepSeek (tab auto-closes after 3600s = 1 hour; close_after is REQUIRED)
+curl -X POST "https://YOUR_URL/api/profiles/agent-1/tabs/new?url=https://chat.deepseek.com&close_after=3600&token=YOUR_TOKEN"
 
 # List tabs
 curl "https://YOUR_URL/api/profiles/agent-1/tabs?token=YOUR_TOKEN"
@@ -116,6 +117,11 @@ TOKEN = "YOUR_TOKEN"
 
 # Start Chrome (30 min)
 requests.post(f"{BASE}/api/profiles/agent-1/start", params={"token": TOKEN, "duration": 30})
+
+# Open a tab — close_after (seconds) is REQUIRED; the tab auto-closes when it expires
+resp = requests.post(f"{BASE}/api/profiles/agent-1/tabs/new",
+                     params={"token": TOKEN, "url": "https://chat.deepseek.com", "close_after": 3600})
+print(resp.json())
 
 # List tabs
 resp = requests.get(f"{BASE}/api/profiles/agent-1/tabs", params={"token": TOKEN})
@@ -161,13 +167,14 @@ Identical to desktop, plus mobile-specific extras:
 | `POST` | `/api/profiles/<name>/start?token=xxx&duration=MIN` | Start profile in isolated process |
 | `POST` | `/api/profiles/<name>/stop?token=xxx` | Stop profile (cookies persisted) |
 | `GET` | `/api/profiles/<name>/tabs?token=xxx` | List tabs |
-| `POST` | `/api/profiles/<name>/tabs/new?url=URL&ua=AGENT&token=xxx` | Open tab (headless WebView, `ua` optional) |
+| `POST` | `/api/profiles/<name>/tabs/new?url=URL&close_after=SEC&ua=AGENT&token=xxx` | Open tab (**`close_after` required** seconds until auto-close; `ua` optional) |
 | `DELETE` | `/api/profiles/<name>/tabs/<id>?token=xxx` | Close a tab |
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | PNG screenshot of the tab |
 | `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | Run JS in the tab, body `{"js":"..."}` |
 | `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP-style passthrough |
 
 Notes:
+- **`close_after` is REQUIRED on `tabs/new`** — integer seconds (1..604800) until the tab is auto-destroyed and its memory reclaimed, e.g. `close_after=3600` = 1 hour. Requests without it get HTTP 400 with a self-explanatory error. This exists so agents must declare a tab's lifetime instead of leaking tabs; tabs opened by a human on the phone UI (➕ button / 显示WebView / page popups) default to 1 hour. `GET /tabs` returns `auto_close_in_s` (remaining seconds) per tab
 - Tabs render headless (1080x2340) with a desktop Chrome User-Agent by default; pass `&ua=...` to override
 - Non-http(s) navigations (deep links like `baiduboxapp://`) are blocked to prevent hijacks
 - `duration` triggers auto-stop, mirroring desktop behavior

@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,12 @@ type CDPProxy struct {
 	mu     sync.RWMutex
 	routes map[string]string // profile name → target URL (如 http://127.0.0.1:9334)
 	ln     net.Listener
+
+	// v1.3.9 标签 TTL：profile -> tabID -> 自动关闭期限。
+	// 只有通过本代理 API 打开的标签才被登记；到期由 janitor 协程
+	// 调 Chrome /json/close/<id> 关闭，防止智能体开标签不关耗尽内存。
+	tabMu  sync.Mutex
+	tabTTL map[string]map[string]time.Time
 }
 
 var cdpProxy = &CDPProxy{
@@ -71,7 +78,91 @@ func (p *CDPProxy) Start(listenAddr string) (string, error) {
 
 	srv := &http.Server{Handler: http.HandlerFunc(p.handle)}
 	go srv.Serve(ln)
+	p.startTabJanitor() // v1.3.9: 到期标签自动关闭
 	return "http://" + ln.Addr().String(), nil
+}
+
+// ---------------------------------------------------------------------------
+// v1.3.9 标签 TTL 登记 + 自动关闭
+// ---------------------------------------------------------------------------
+
+// recordTabTTL 登记一个 API 打开的标签的自动关闭期限
+func (p *CDPProxy) recordTabTTL(profile, tabID string, deadline time.Time) {
+	if tabID == "" {
+		return
+	}
+	p.tabMu.Lock()
+	defer p.tabMu.Unlock()
+	if p.tabTTL == nil {
+		p.tabTTL = make(map[string]map[string]time.Time)
+	}
+	if p.tabTTL[profile] == nil {
+		p.tabTTL[profile] = make(map[string]time.Time)
+	}
+	p.tabTTL[profile][tabID] = deadline
+}
+
+// clearTabTTL 清空某 profile 的全部 TTL 记录（profile 停止时 Chrome 已被杀）
+func (p *CDPProxy) clearTabTTL(profile string) {
+	p.tabMu.Lock()
+	defer p.tabMu.Unlock()
+	delete(p.tabTTL, profile)
+}
+
+// startTabJanitor 每 15s 扫描一次到期标签并关闭
+func (p *CDPProxy) startTabJanitor() {
+	go func() {
+		for {
+			time.Sleep(15 * time.Second)
+			p.sweepExpiredTabs()
+		}
+	}()
+}
+
+func (p *CDPProxy) sweepExpiredTabs() {
+	now := time.Now()
+	type dueTab struct{ profile, id string }
+	var expired []dueTab
+
+	p.tabMu.Lock()
+	for prof, m := range p.tabTTL {
+		p.mu.RLock()
+		_, running := p.routes[prof]
+		p.mu.RUnlock()
+		if !running {
+			// profile 已停止：Chrome 进程已死，记录作废
+			delete(p.tabTTL, prof)
+			continue
+		}
+		for id, deadline := range m {
+			if now.After(deadline) {
+				expired = append(expired, dueTab{prof, id})
+			}
+		}
+	}
+	p.tabMu.Unlock()
+
+	for _, e := range expired {
+		p.tabMu.Lock()
+		if m, ok := p.tabTTL[e.profile]; ok {
+			delete(m, e.id)
+		}
+		p.tabMu.Unlock()
+
+		p.mu.RLock()
+		targetURL, ok := p.routes[e.profile]
+		p.mu.RUnlock()
+		if !ok {
+			continue
+		}
+		resp, err := http.Get(targetURL + "/json/close/" + e.id)
+		if err == nil {
+			resp.Body.Close()
+			log.Printf("[tab-janitor] profile %s 标签 %s 已到期自动关闭", e.profile, e.id)
+		} else {
+			log.Printf("[tab-janitor] profile %s 标签 %s 关闭失败: %v", e.profile, e.id, err)
+		}
+	}
 }
 
 // Stop 停止代理
@@ -297,6 +388,7 @@ func (p *CDPProxy) apiStopProfile(w http.ResponseWriter, r *http.Request, name s
 		writeAPIError(w, 500, "stop failed: "+err.Error())
 		return
 	}
+	p.clearTabTTL(name) // v1.3.9: Chrome 已停，标签 TTL 记录作废
 	writeJSON(w, 200, map[string]interface{}{
 		"ok":      true,
 		"message": "profile '" + name + "' stopped",
@@ -339,6 +431,19 @@ func (p *CDPProxy) apiNewTab(w http.ResponseWriter, r *http.Request, name string
 	}
 	targetURL = strings.TrimSuffix(targetURL, "/")
 
+	// v1.3.9: close_after 必填（秒）——智能体必须声明标签存活时长，
+	// 到期自动关闭，防止开大量标签不关导致内存耗尽
+	caStr := r.URL.Query().Get("close_after")
+	if caStr == "" {
+		writeAPIError(w, 400, "missing required parameter 'close_after' (seconds): declare how long this tab should live, e.g. close_after=3600 for 1 hour. The tab is auto-closed when the time is up to prevent leaked tabs from exhausting memory.")
+		return
+	}
+	closeAfter, err := strconv.ParseInt(caStr, 10, 64)
+	if err != nil || closeAfter <= 0 || closeAfter > 604800 {
+		writeAPIError(w, 400, "invalid 'close_after': must be seconds in 1..604800 (max 7 days), e.g. close_after=3600 = 1 hour")
+		return
+	}
+
 	tabURL := r.URL.Query().Get("url")
 	if tabURL == "" {
 		var body struct {
@@ -362,9 +467,15 @@ func (p *CDPProxy) apiNewTab(w http.ResponseWriter, r *http.Request, name string
 	defer resp.Body.Close()
 	var tab map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&tab)
+	tabID := str(tab, "id")
+	deadline := time.Now().Add(time.Duration(closeAfter) * time.Second)
+	p.recordTabTTL(name, tabID, deadline)
+	log.Printf("[api] profile %s 打开标签 %s (%s)，%d 秒后自动关闭", name, tabID, tabURL, closeAfter)
 	writeJSON(w, 200, map[string]interface{}{
-		"ok":  true,
-		"tab": tab,
+		"ok":                  true,
+		"tab":                 tab,
+		"close_after_seconds": closeAfter,
+		"auto_close_at":       deadline.Unix(),
 	})
 }
 
@@ -384,6 +495,12 @@ func (p *CDPProxy) apiCloseTab(w http.ResponseWriter, r *http.Request, name, tab
 		return
 	}
 	defer resp.Body.Close()
+	// v1.3.9: 手动关掉的标签从 TTL 登记里移除，janitor 不再重复关
+	p.tabMu.Lock()
+	if m, ok := p.tabTTL[name]; ok {
+		delete(m, tabID)
+	}
+	p.tabMu.Unlock()
 	writeJSON(w, 200, map[string]interface{}{
 		"ok":      true,
 		"message": "tab " + tabID + " closed",

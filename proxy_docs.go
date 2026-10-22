@@ -178,9 +178,10 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <div class="endpoint">
 <span class="method POST">POST</span>
 <div>
-<div class="path">/api/profiles/NAME/tabs/new?url=URL&token=TOKEN</div>
-<div class="desc">在指定 profile 中打开新标签页</div>
-<div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&token=` + token + `"</div>
+<div class="path">/api/profiles/NAME/tabs/new?url=URL&close_after=SECONDS&token=TOKEN</div>
+<div class="desc">在指定 profile 中打开新标签页。必须声明存活时长，到期自动关闭标签回收内存</div>
+<div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&close_after=3600&token=` + token + `"</div>
+<div class="desc" style="color:#ff8c00">⚠ close_after 为必填参数（单位：秒，1..604800），到期后标签自动关闭；缺省会返回 400 错误。手机端人工打开的标签默认 1 小时自动关闭</div>
 </div>
 </div>
 
@@ -217,7 +218,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method GET">GET</span>
 <div>
 <div class="path">/agent-1/json/new/URL?token=TOKEN</div>
-<div class="desc">CDP 原生打开标签页（Chrome 154 需 PUT）</div>
+<div class="desc">CDP 原生打开标签页（Chrome 154 需 PUT）。注意：走 CDP 透传打开的标签不受 close_after 管理，请自行负责关闭</div>
 </div>
 </div>
 
@@ -236,7 +237,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method POST">PY</span>
 <div>
 <div class="path">Python 接入示例</div>
-<div class="example" onclick="copyText(this.textContent)">import requests&#10;BASE = "` + baseURL + `"&#10;TOKEN = "` + token + `"&#10;# 列出所有 profile&#10;r = requests.get(f"{BASE}/api/profiles?token={TOKEN}")&#10;# 启动 agent-1 的 Chrome（运行 30 分钟后自动关闭）&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/start?token={TOKEN}&duration=30")&#10;# 打开百度&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&token={TOKEN}")&#10;# 查看标签页&#10;r = requests.get(f"{BASE}/api/profiles/agent-1/tabs?token={TOKEN}")&#10;# 用完手动停止&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/stop?token={TOKEN}")</div>
+<div class="example" onclick="copyText(this.textContent)">import requests&#10;BASE = "` + baseURL + `"&#10;TOKEN = "` + token + `"&#10;# 列出所有 profile&#10;r = requests.get(f"{BASE}/api/profiles?token={TOKEN}")&#10;# 启动 agent-1 的 Chrome（运行 30 分钟后自动关闭）&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/start?token={TOKEN}&duration=30")&#10;# 打开百度（必须声明存活时长：3600 秒 = 1 小时，到期自动关闭）&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/tabs/new?token={TOKEN}&url=https://www.baidu.com&close_after=3600")&#10;# 查看标签页&#10;r = requests.get(f"{BASE}/api/profiles/agent-1/tabs?token={TOKEN}")&#10;# 用完手动停止&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/stop?token={TOKEN}")</div>
 </div>
 </div>
 </div>

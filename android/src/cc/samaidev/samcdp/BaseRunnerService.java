@@ -204,8 +204,26 @@ public abstract class BaseRunnerService extends Service {
             } else if (path.equals("/tabs") && method.equals("GET")) {
                 payload = TabEngine.listTabs().getBytes(StandardCharsets.UTF_8);
             } else if (seg.length == 2 && seg[1].equals("open") && method.equals("POST")) {
-                payload = TabEngine.openTab(getApplicationContext(), query.get("url"), query.get("ua"))
-                        .getBytes(StandardCharsets.UTF_8);
+                // v1.3.9: close_after is REQUIRED for API tab opens — agents must
+                // declare the tab's lifetime (seconds) or the request is rejected.
+                // Rationale: tabs opened without a lifetime leak WebView memory until
+                // the profile process dies. Humans open via the phone UI (➕ / 显示
+                // WebView), which defaults to 1 hour inside TabEngine.
+                long closeAfter = -1;
+                String caRaw = query.get("close_after");
+                if (caRaw != null) {
+                    try {
+                        closeAfter = Long.parseLong(caRaw.trim());
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (closeAfter <= 0 || closeAfter > TabEngine.MAX_TAB_TTL_S) {
+                    payload = ("{\"ok\":false,\"error\":\"close_after is required: number of SECONDS until this tab auto-closes (1..604800). Example: close_after=3600 keeps the tab for 1 hour. API callers must declare how long the tab lives; tabs opened by a human from the phone UI default to 1 hour.\"}")
+                            .getBytes(StandardCharsets.UTF_8);
+                } else {
+                    payload = TabEngine.openTab(getApplicationContext(), query.get("url"),
+                            query.get("ua"), closeAfter).getBytes(StandardCharsets.UTF_8);
+                }
             } else if (seg.length == 4 && seg[1].equals("tabs") && method.equals("GET")
                     && seg[3].equals("screenshot")) {
                 byte[] png = TabEngine.screenshot(seg[2]);

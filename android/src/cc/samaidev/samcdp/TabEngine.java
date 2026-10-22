@@ -45,6 +45,15 @@ public class TabEngine {
     // the button must always give the user something to look at, not an error toast
     public static final String START_TAB_URL = "https://www.baidu.com";
 
+    // v1.3.9 tab TTL policy: every tab MUST have a close time, otherwise agents
+    // that open tabs without ever closing them leak WebView memory until the
+    // profile process dies. Humans opening tabs from the phone UI (➕ button,
+    // 显示WebView auto-start, page popups) get the 1-hour default below; API
+    // callers MUST pass close_after explicitly (enforced in Api/BaseRunnerService).
+    public static final long MANUAL_TAB_TTL_S = 3600;               // human open -> 1 hour
+    public static final long MAX_TAB_TTL_S = 7 * 24 * 3600;         // hard cap: 7 days
+    private static final long AUTOCLOSE_TICK_MS = 15_000;           // sweep interval
+
     // Headless PHYSICAL pixel size = CSS viewport * real device density.
     // A detached WebView still inherits the device density (e.g. 2.75 on a 2K phone),
     // so measuring 412x915 raw would give a 150px CSS viewport and wreck layout.
@@ -158,6 +167,7 @@ public class TabEngine {
         volatile String title = "";
         volatile String ua;   // settings UA this tab was created with (popups inherit it)
         volatile long openedAtMs;
+        volatile long closeAtMs; // v1.3.9: epoch ms when this tab auto-closes (0 = never)
         WebView webView; // main thread of the runner process only
 
         TabItem(String id, String url) {
@@ -166,6 +176,10 @@ public class TabEngine {
             this.openedAtMs = System.currentTimeMillis();
         }
     }
+
+    // v1.3.9: periodic sweep that destroys expired tabs. One repeating Runnable
+    // per runner process, posted on the same MAIN handler every WebView op uses.
+    private static Runnable autoCloseTimer;
 
     // ------------------------------------------------------------ lifecycle
 
@@ -185,11 +199,56 @@ public class TabEngine {
         } else {
             autoStopAtMs = 0;
         }
+        startAutoCloseTimer();
+    }
+
+    // ------------------------------------------------------------ v1.3.9 auto-close sweeper
+
+    /** Arm the 15s tab-TTL sweep (idempotent — one timer per runner process). */
+    private static void startAutoCloseTimer() {
+        if (autoCloseTimer != null) return;
+        autoCloseTimer = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    sweepExpiredTabs();
+                } catch (Exception e) {
+                    log("[" + profileName + "] auto-close sweep failed: " + e.getMessage());
+                }
+                MAIN.postDelayed(this, AUTOCLOSE_TICK_MS);
+            }
+        };
+        MAIN.postDelayed(autoCloseTimer, AUTOCLOSE_TICK_MS);
+    }
+
+    private static void stopAutoCloseTimer() {
+        if (autoCloseTimer != null) {
+            MAIN.removeCallbacks(autoCloseTimer);
+            autoCloseTimer = null;
+        }
+    }
+
+    /** Close every tab whose close_after deadline has passed. closeTab() handles
+     *  visible-tab handover (detach first, screen to newest remaining tab). */
+    private static void sweepExpiredTabs() {
+        if (profileName == null) return;
+        List<TabItem> tabs = TABS.get(profileName);
+        if (tabs == null || tabs.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        List<String> expired = new ArrayList<>();
+        for (TabItem t : tabs) {
+            if (t.closeAtMs > 0 && now >= t.closeAtMs) expired.add(t.id);
+        }
+        for (String id : expired) {
+            log("[" + profileName + "] auto-closing tab " + id + " (close_after expired)");
+            closeTab(id);
+        }
     }
 
     static void stop(Context ctx) {
         // close any full-screen host BEFORE destroying the WebViews underneath it
         detach();
+        stopAutoCloseTimer();
         if (durationTimer != null) {
             MAIN.removeCallbacks(durationTimer);
             durationTimer = null;
@@ -228,7 +287,14 @@ public class TabEngine {
 
     // ------------------------------------------------------------ tab API
 
-    static synchronized String openTab(Context ctx, String url, String ua) {
+    /**
+     * v1.3.9: closeAfterSec is the tab's declared lifetime in seconds — the tab
+     * is destroyed when now + closeAfterSec passes. API callers MUST pass a
+     * positive value (validated upstream in Api/BaseRunnerService); internal
+     * human-handover paths (showTab auto-start, ➕ newTabVisible, popups) pass
+     * MANUAL_TAB_TTL_S (1 hour). closeAfterSec <= 0 = no auto-close.
+     */
+    static synchronized String openTab(Context ctx, String url, String ua, long closeAfterSec) {
         try {
             if (profileName == null) return err("engine not started");
             // recompute headless physical size from the REAL device density every open —
@@ -253,6 +319,8 @@ public class TabEngine {
                 }
             });
             if (holder[0] == null) return err("failed to create tab");
+            holder[0].closeAtMs = closeAfterSec > 0
+                    ? System.currentTimeMillis() + closeAfterSec * 1000L : 0;
             JSONObject o = tabJson(holder[0]);
             o.put("ok", true);
             JSONObject wrap = new JSONObject();
@@ -418,6 +486,7 @@ public class TabEngine {
             Set<String> visited = VISITED.computeIfAbsent(profileName, k -> ConcurrentHashMap.newKeySet());
             String ua = opener != null ? opener.ua : null;
             TabItem t = newTabItem(ctx, "(popup)", ua, visited);
+            t.closeAtMs = System.currentTimeMillis() + MANUAL_TAB_TTL_S * 1000L; // popups: 1h default
             TABS.computeIfAbsent(profileName, k -> new CopyOnWriteArrayList<>()).add(t);
             POPUP_OPENER.put(t.id, opener == null ? "" : opener.id);
             log("[" + profileName + "] popup tab " + t.id + " opened from "
@@ -647,7 +716,7 @@ public class TabEngine {
             if (tabs == null || tabs.isEmpty()) {
                 // profile is running but nobody opened a tab yet — auto-create a
                 // start tab so「显示WebView」always works instead of toasting an error
-                String opened = openTab(ctx, START_TAB_URL, null);
+                String opened = openTab(ctx, START_TAB_URL, null, MANUAL_TAB_TTL_S);
                 boolean okOpen = false;
                 try {
                     okOpen = new JSONObject(opened).optBoolean("ok");
@@ -881,7 +950,7 @@ public class TabEngine {
             if (tid != null && tabs != null) {
                 for (TabItem t : tabs) if (t.id.equals(tid)) ua = t.ua;
             }
-            String opened = openTab(ctx, START_TAB_URL, ua);
+            String opened = openTab(ctx, START_TAB_URL, ua, MANUAL_TAB_TTL_S);
             JSONObject oj = new JSONObject(opened);
             if (!oj.optBoolean("ok")) return opened;
             JSONObject tobj = oj.optJSONObject("tab");
@@ -1091,6 +1160,9 @@ public class TabEngine {
             o.put("type", "page");
             o.put("profile", profileName);
             o.put("opened_at_s", t.openedAtMs / 1000);
+            // v1.3.9: remaining seconds until auto-close (-1 = no deadline)
+            o.put("auto_close_in_s", t.closeAtMs > 0
+                    ? Math.max(0, (t.closeAtMs - System.currentTimeMillis()) / 1000) : -1);
             return o;
         } catch (Exception e) {
             return new JSONObject();

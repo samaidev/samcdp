@@ -86,7 +86,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.3.8");
+            o.put("version", "1.3.9");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -94,7 +94,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.3.8");
+            o.put("version", "1.3.9");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -291,7 +291,28 @@ public class Api extends HttpServer {
                 if (url == null || url.isEmpty()) return err(400, "url query param required");
                 if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("file://")
                         && !url.startsWith("about:")) url = "https://" + url;
-                return toResp(ProfileManager.openTab(p, url, req.query.get("ua")));
+                // v1.3.9: close_after is REQUIRED (seconds until auto-close).
+                // Agents must declare the tab's lifetime — tabs opened without one
+                // leak WebView memory until the profile process dies. Human opens
+                // from the phone UI default to 1 hour (see TabEngine.MANUAL_TAB_TTL_S).
+                long closeAfter = -1;
+                String caRaw = req.query.get("close_after");
+                if (caRaw != null) {
+                    try {
+                        closeAfter = Long.parseLong(caRaw.trim());
+                    } catch (Exception ignored) {
+                    }
+                }
+                if (closeAfter <= 0) {
+                    return err(400, "close_after is required: number of SECONDS until this tab auto-closes (1..604800). "
+                            + "Example: close_after=3600 keeps the tab for 1 hour. "
+                            + "API callers must declare how long the tab lives to prevent leaked tabs from exhausting device memory; "
+                            + "tabs opened by a human from the phone UI default to 1 hour.");
+                }
+                if (closeAfter > 604800) {
+                    return err(400, "close_after too large: max 604800 seconds (7 days)");
+                }
+                return toResp(ProfileManager.openTab(p, url, req.query.get("ua"), closeAfter));
             }
 
             if (seg.length >= 6 && seg[4].equals("tabs")) {
@@ -325,9 +346,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.3.8");
+                    o.put("Browser", "samcdp-webview/1.3.9");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.3.8 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.3.9 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -396,7 +417,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.3.8</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.3.9</h1>");
         sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
         sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>接口列表</h2><table>");
@@ -416,15 +437,22 @@ public class Api extends HttpServer {
         row(sb, "POST", "/api/profiles/&lt;name&gt;/hide?token=xxx", "隐藏 WebView（回到无头模式）");
         row(sb, "GET", "/api/profiles/&lt;name&gt;/visible?token=xxx", "WebView 可见状态");
         row(sb, "GET", "/api/frontend?token=xxx", "多 Profile 前端聚合（全部 tabs + 当前可见项）");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&ua=AGENT&token=xxx", "打开标签页");
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页（含 auto_close_in_s 剩余存活秒数）");
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&close_after=SEC&ua=AGENT&token=xxx", "打开标签页（<b>close_after 必填</b>：N 秒后自动关闭）");
         row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "关闭标签页");
         row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", "标签页 PNG 截图");
         row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", "执行 JS（body {\"js\":\"...\"}）");
         row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", "CDP 风格透传");
         sb.append("</table>");
+        sb.append("<h2>⚠ close_after 必填（防标签泄漏）</h2>");
+        sb.append("<p>通过 API 打开标签页时<strong>必须</strong>传 <code>close_after=秒数</code>（1..604800，即最长 7 天），"
+                + "到期标签自动销毁、内存立即回收。缺省或非法值会被拒绝（HTTP 400 并返回说明）。"
+                + "示例：<code>close_after=3600</code> = 1 小时，<code>close_after=600</code> = 10 分钟。"
+                + "人在手机 UI 上手动开标签（➕ / 显示WebView / 页面弹窗）默认 1 小时自动关闭，无需手填。"
+                + "标签列表（/tabs）返回 <code>auto_close_in_s</code> 字段可查询剩余存活秒数。</p>");
         sb.append("<h2>示例</h2>");
-        sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code>");
+        sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code><br><br>");
+        sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&amp;close_after=3600&amp;token=&lt;token&gt;\"</code>");
         sb.append("<p class=\"muted\">鉴权: ?token= 或 Authorization: Bearer · 每 Profile 运行在独立进程，Cookie 完全隔离 · ")
                 .append("SamAI Group</p></body></html>");
         return sb.toString();

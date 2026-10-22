@@ -350,6 +350,7 @@ public class TabActivity extends Activity {
         String url;
         boolean visible;
         boolean mine;
+        long closeInS = -1;  // v1.3.9: remaining seconds until auto-close (-1 = none)
         boolean action;      // bottom action row (hide current / close current)
         String actionLabel;
     }
@@ -379,6 +380,7 @@ public class TabActivity extends Activity {
                     e.tabId = t.optString("id");
                     e.title = t.optString("title", "");
                     e.url = t.optString("url", "");
+                    e.closeInS = t.optLong("auto_close_in_s", -1);
                     e.visible = visOn && t.optString("id").equals(visTab);
                     e.mine = self != null && self.equals(profile);
                     entries.add(e);
@@ -520,6 +522,14 @@ public class TabActivity extends Activity {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
+    /** v1.3.9: human-readable remaining auto-close time ("45m", "1h05m"; "" = none). */
+    private static String fmtTtl(long s) {
+        if (s <= 0) return "";
+        long m = (s + 59) / 60;
+        if (m < 60) return m + "m";
+        return (m / 60) + "h" + String.format("%02d", m % 60) + "m";
+    }
+
     private static String post(String url, int timeoutMs) {
         HttpURLConnection c = null;
         try {
@@ -611,7 +621,10 @@ public class TabActivity extends Activity {
                 if (e.visible) top.setTypeface(Typeface.DEFAULT_BOLD);
                 String host = e.url;
                 try { Uri u = Uri.parse(e.url); host = u.getHost() == null ? e.url : u.getHost(); } catch (Exception ignored) {}
-                sub.setText("[" + e.profile + (e.mine ? " · 当前" : "") + "]  " + host);
+                // v1.3.9: show the tab's remaining auto-close time in the switcher
+                String ttl = fmtTtl(e.closeInS);
+                sub.setText("[" + e.profile + (e.mine ? " · 当前" : "") + "]  " + host
+                        + (ttl.isEmpty() ? "" : " · " + ttl + "后自动关闭"));
                 sub.setTextColor(e.mine ? 0xFFD2610F : 0xFF888888);
 
                 // per-tab ✕ close (v1.3.8)
