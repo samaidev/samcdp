@@ -575,16 +575,20 @@ public class TabActivity extends Activity {
         @Override
         public android.view.View getView(int position, android.view.View convertView, ViewGroup parent) {
             Entry e = items.get(position);
-            // v1.3.8: horizontal row — [tab info (weight 1)][✕ close button]
-            LinearLayout row = new LinearLayout(TabActivity.this);
-            row.setOrientation(LinearLayout.HORIZONTAL);
-            row.setGravity(Gravity.CENTER_VERTICAL);
+            // v1.3.8: vertical wrapper -> [contentRow [tab info (weight 1)][✕ close]] + hairline.
+            // The hairline MUST live in the vertical parent: as a MATCH_PARENT-width child
+            // of the horizontal contentRow it would swallow the whole width and crush the
+            // weighted info area to 0 (blank titles, only ✕ visible).
+            int pad = dip(14);
+
+            LinearLayout contentRow = new LinearLayout(TabActivity.this);
+            contentRow.setOrientation(LinearLayout.HORIZONTAL);
+            contentRow.setGravity(Gravity.CENTER_VERTICAL);
 
             LinearLayout info = new LinearLayout(TabActivity.this);
             info.setOrientation(LinearLayout.VERTICAL);
-            int pad = dip(14);
             info.setPadding(dip(20), pad, dip(8), pad);
-            row.addView(info, new LinearLayout.LayoutParams(
+            contentRow.addView(info, new LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
             TextView top = new TextView(TabActivity.this);
@@ -620,11 +624,15 @@ public class TabActivity extends Activity {
                 cb.setPadding(dip(16), pad, dip(22), pad);
                 cb.setText("✕");
                 cb.setOnClickListener(v -> closeEntry(e));
-                row.addView(cb);
+                contentRow.addView(cb);
             }
             info.addView(top);
             info.addView(sub);
 
+            LinearLayout row = new LinearLayout(TabActivity.this);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.addView(contentRow, new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
             if (position < items.size() - 1) {
                 android.view.View line = new android.view.View(TabActivity.this);
                 line.setBackgroundColor(0x11000000);
