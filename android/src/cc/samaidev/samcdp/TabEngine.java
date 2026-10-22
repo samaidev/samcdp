@@ -514,6 +514,14 @@ public class TabEngine {
         }
     }
 
+    /**
+     * Close a tab by id (switcher ✕ button, DELETE /tabs/<id>, POST /tabs/<id>/close).
+     * v1.3.8: if the closed tab is the one on screen, detach it FIRST (destroying an
+     * attached WebView leaves a dead view), then hand the screen to the newest
+     * remaining tab — or drop back to headless when it was the last one. Popups
+     * opened by the closed tab lose their back-target (mapping cleaned up; the
+     * popups themselves keep running, like a browser orphaning its popups).
+     */
     static synchronized String closeTab(String id) {
         List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
         if (tabs == null) return err("no tabs");
@@ -521,6 +529,10 @@ public class TabEngine {
         for (TabItem t : tabs) if (t.id.equals(id) || t.id.startsWith(id)) target = t;
         if (target == null) return err("tab not found: " + id);
         TabItem f = target;
+        boolean wasVisible = f.id.equals(visibleTabId);
+        android.app.Activity host = visibleHost;
+        ViewGroup root = visibleRoot;
+        if (wasVisible) detachAttached(); // off the root BEFORE destroy
         runAndWait(() -> {
             try {
                 f.webView.stopLoading();
@@ -531,6 +543,25 @@ public class TabEngine {
         });
         tabs.remove(f);
         POPUP_OPENER.remove(f.id);
+        final String closedId = f.id;
+        POPUP_OPENER.entrySet().removeIf(en -> closedId.equals(en.getValue()));
+        if (wasVisible) {
+            TabItem back = null;
+            for (TabItem t : tabs) if (back == null || t.openedAtMs > back.openedAtMs) back = t;
+            if (back != null && back.webView != null && root != null && host != null) {
+                attachToRoot(back, root);
+                visibleHost = host;
+                visibleRoot = root;
+                visibleTabId = back.id;
+                notifyPageUrl(back.id, back.url);
+                log("[" + profileName + "] tab " + closedId + " closed, screen -> " + back.id);
+            } else {
+                log("[" + profileName + "] tab " + closedId + " closed, back to headless");
+                hide(); // last tab gone → detach & headless (host finishes itself)
+            }
+        } else {
+            log("[" + profileName + "] tab " + closedId + " closed");
+        }
         return "{\"ok\":true}";
     }
 
@@ -804,6 +835,63 @@ public class TabEngine {
             }
         });
         return "{\"ok\":true,\"reloaded\":\"" + tid + "\"}";
+    }
+
+    /**
+     * ← button (v1.3.8): history-back on the VISIBLE tab. The address box follows
+     * automatically — goBack() fires doUpdateVisitedHistory -> notifyPageUrl.
+     * Returns ok:false when there is no history to go back to (UI toasts).
+     */
+    static String goBackVisible() {
+        String tid = visibleTabId;
+        if (tid == null) return err("no visible tab");
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        TabItem target = null;
+        if (tabs != null) for (TabItem t : tabs) if (t.id.equals(tid)) target = t;
+        if (target == null || target.webView == null) return err("tab has no webview");
+        final TabItem t = target;
+        final String[] res = new String[1];
+        runAndWait(() -> {
+            try {
+                if (!t.webView.canGoBack()) {
+                    res[0] = err("nothing to go back to");
+                    return;
+                }
+                t.webView.goBack();
+                res[0] = "{\"ok\":true,\"tab\":\"" + t.id + "\"}";
+                log("[" + profileName + "] history-back on visible tab " + t.id);
+            } catch (Exception e) {
+                res[0] = err("back failed: " + e.getMessage());
+            }
+        });
+        return res[0];
+    }
+
+    /**
+     * ➕ button (v1.3.8): open a fresh START_TAB_URL tab and show it immediately.
+     * The new tab inherits the visible tab's UA (same rule as popups). If a host
+     * activity is on screen the WebView swaps in-place (switchTab), otherwise
+     * showTab launches the profile's TabActivity.
+     */
+    static String newTabVisible(Context ctx) {
+        try {
+            String ua = null;
+            String tid = visibleTabId;
+            List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+            if (tid != null && tabs != null) {
+                for (TabItem t : tabs) if (t.id.equals(tid)) ua = t.ua;
+            }
+            String opened = openTab(ctx, START_TAB_URL, ua);
+            JSONObject oj = new JSONObject(opened);
+            if (!oj.optBoolean("ok")) return opened;
+            JSONObject tobj = oj.optJSONObject("tab");
+            String newId = tobj == null ? null : tobj.optString("id", null);
+            if (newId == null || newId.isEmpty()) return err("openTab returned no id");
+            log("[" + profileName + "] new tab " + newId + " from ➕ button");
+            return switchTab(ctx, newId);
+        } catch (Exception e) {
+            return err("new tab failed: " + e.getMessage());
+        }
     }
 
     /** URL of the tab currently attached to the visible host (or null). */

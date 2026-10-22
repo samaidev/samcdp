@@ -228,6 +228,10 @@ public abstract class BaseRunnerService extends Service {
                 payload = TabEngine.eval(seg[2], js).getBytes(StandardCharsets.UTF_8);
             } else if (seg.length == 3 && seg[1].equals("tabs") && method.equals("DELETE")) {
                 payload = TabEngine.closeTab(seg[2]).getBytes(StandardCharsets.UTF_8);
+            } else if (seg.length == 4 && seg[1].equals("tabs") && method.equals("POST")
+                    && seg[3].equals("close")) {
+                // v1.3.8: POST alias of DELETE /tabs/<id> — switcher ✕ uses it
+                payload = TabEngine.closeTab(seg[2]).getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/show") && method.equals("POST")) {
                 payload = TabEngine.showTab(getApplicationContext(), query.get("tab"))
                         .getBytes(StandardCharsets.UTF_8);
@@ -240,6 +244,12 @@ public abstract class BaseRunnerService extends Service {
                 payload = TabEngine.reloadVisible().getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/navigate") && method.equals("POST")) {
                 payload = TabEngine.navigateVisible(query.get("url")).getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/back") && method.equals("POST")) {
+                // v1.3.8: history-back on the visible tab (address-bar ← button)
+                payload = TabEngine.goBackVisible().getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/newtab") && method.equals("POST")) {
+                // v1.3.8: fresh start tab, shown immediately (address-bar ➕ button)
+                payload = TabEngine.newTabVisible(getApplicationContext()).getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/visible") && method.equals("GET")) {
                 payload = TabEngine.visibleJson().getBytes(StandardCharsets.UTF_8);
             } else {
