@@ -15,6 +15,7 @@
         android:paddingBottom="32dp">
 
         <TextView
+            android:id="@+id/title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="⚙ samcdp 设置"
@@ -24,6 +25,7 @@
 
         <!-- ============ 远程地址 ============ -->
         <TextView
+            android:id="@+id/remote_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -71,6 +73,7 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/api_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -80,6 +83,7 @@
 
         <!-- ============ aitun 隧道 ============ -->
         <TextView
+            android:id="@+id/tunnel_section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -104,6 +108,7 @@
             android:maxLines="1" />
 
         <TextView
+            android:id="@+id/key_hint2"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -136,6 +141,49 @@
                 android:textColor="@color/text"
                 android:textSize="13sp" />
         </RadioGroup>
+
+        <!-- v1.4.0: language selector (default English) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/lang_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Language / 语言"
+                android:textColor="@color/text"
+                android:textSize="13sp" />
+
+            <RadioGroup
+                android:id="@+id/lang_group"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:orientation="horizontal">
+
+                <RadioButton
+                    android:id="@+id/lang_en"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="English"
+                    android:textColor="@color/text"
+                    android:textSize="13sp"
+                    android:checked="true" />
+
+                <RadioButton
+                    android:id="@+id/lang_zh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:text="中文"
+                    android:textColor="@color/text"
+                    android:textSize="13sp" />
+            </RadioGroup>
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -179,6 +227,7 @@
 
         <!-- ============ 运行状态 ============ -->
         <TextView
+            android:id="@+id/status_section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -214,6 +263,7 @@
 
         <!-- ============ Profile 管理 ============ -->
         <TextView
+            android:id="@+id/profiles_section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
@@ -263,6 +313,7 @@
             android:maxLines="1" />
 
         <TextView
+            android:id="@+id/token_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
@@ -296,6 +347,7 @@
 
         <!-- ============ LOG ============ -->
         <TextView
+            android:id="@+id/log_section"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"

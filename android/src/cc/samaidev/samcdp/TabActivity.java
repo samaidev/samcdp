@@ -59,6 +59,7 @@ public class TabActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        L.load(this); // v1.4.0: language pref (profile process)
 
         // v1.3.8: the toolbar is REAL LAYOUT (LinearLayout rows), not an overlay —
         // the WebView lives in the weight=1 content area BELOW it, so nothing the
@@ -118,7 +119,7 @@ public class TabActivity extends Activity {
         pill.setBackground(bg);
         pill.setOnClickListener(v -> openSwitcher());
         String pn = TabEngine.profileName();
-        pill.setText((pn == null ? "" : pn + "  ") + "≡ 标签");
+        pill.setText((pn == null ? "" : pn + "  ") + L.t("tab.tabs"));
 
         // row2: [pill] …spacer… [⟳][✕]
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
@@ -132,7 +133,7 @@ public class TabActivity extends Activity {
         urlBox.setTextSize(12);
         urlBox.setTextColor(0xFFFFFFFF);
         urlBox.setHintTextColor(0x88FFFFFF);
-        urlBox.setHint("输入网址，如 example.com");
+        urlBox.setHint(L.t("tab.urlHint"));
         urlBox.setSingleLine(true);
         urlBox.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
         urlBox.setBackgroundResource(0);
@@ -166,7 +167,7 @@ public class TabActivity extends Activity {
         gbg.setColor(0xAA000000);
         gbg.setCornerRadius(20 * den);
         goBtn.setBackground(gbg);
-        goBtn.setText("前往");
+        goBtn.setText(L.t("tab.go"));
         goBtn.setOnClickListener(v -> goUrl());
         LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -188,7 +189,7 @@ public class TabActivity extends Activity {
         backBtn.setText("←");
         backBtn.setOnClickListener(v -> {
             String r = TabEngine.goBackVisible();
-            if (r != null && r.contains("\"ok\":false")) Toast2("已是第一页");
+            if (r != null && r.contains("\"ok\":false")) Toast2(L.t("tab.firstPage"));
         });
         LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -210,7 +211,7 @@ public class TabActivity extends Activity {
         plusBtn.setText("+");
         plusBtn.setOnClickListener(v -> {
             String r = TabEngine.newTabVisible(this);
-            if (r == null || !r.contains("\"ok\":true")) Toast2("新开标签失败");
+            if (r == null || !r.contains("\"ok\":true")) Toast2(L.t("tab.newFail"));
             else updateUrlBox();
         });
         row1.addView(plusBtn);
@@ -230,7 +231,7 @@ public class TabActivity extends Activity {
         refreshBtn.setText("⟳");
         refreshBtn.setOnClickListener(v -> {
             String r = TabEngine.reloadVisible();
-            if (r != null && r.contains("\"ok\":false")) Toast2("没有可刷新的页面");
+            if (r != null && r.contains("\"ok\":false")) Toast2(L.t("tab.noReload"));
         });
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -295,12 +296,12 @@ public class TabActivity extends Activity {
         if (urlBox == null) return;
         String raw = urlBox.getText() == null ? "" : urlBox.getText().toString();
         if (raw.trim().isEmpty()) {
-            Toast2("请输入网址");
+            Toast2(L.t("tab.needUrl"));
             return;
         }
         String r = TabEngine.navigateVisible(raw);
         if (r == null || !r.contains("\"ok\":true")) {
-            Toast2("打开失败：没有显示中的页面");
+            Toast2(L.t("tab.openFailNone"));
             return;
         }
         hideKeyboard();
@@ -396,11 +397,11 @@ public class TabActivity extends Activity {
         // bottom actions: hide / close the CURRENT profile's visible tab
         Entry hide = new Entry();
         hide.action = true;
-        hide.actionLabel = "⌄  隐藏当前 WebView（回到无头模式）";
+        hide.actionLabel = L.t("tab.hideAction");
         entries.add(hide);
         Entry close = new Entry();
         close.action = true;
-        close.actionLabel = "✕  关闭当前显示的标签页";
+        close.actionLabel = L.t("tab.closeAction");
         entries.add(close);
 
         LinearLayout box = new LinearLayout(this);
@@ -408,7 +409,7 @@ public class TabActivity extends Activity {
 
         if (probed.isEmpty()) {
             TextView empty = new TextView(this);
-            empty.setText("没有找到运行中的标签页");
+            empty.setText(L.t("tab.noneFound"));
             empty.setTextColor(0xFF888888);
             empty.setPadding(48, 40, 48, 40);
             box.addView(empty);
@@ -417,7 +418,7 @@ public class TabActivity extends Activity {
         // header
         if (!probed.isEmpty()) {
             TextView head = new TextView(this);
-            head.setText("切换 WebView · 共 " + probed.size() + " 个标签");
+            head.setText(L.f("tab.switchHead", probed.size()));
             head.setTextColor(0xFF888888);
             head.setTextSize(11);
             head.setPadding(48, 36, 48, 12);
@@ -441,7 +442,7 @@ public class TabActivity extends Activity {
                         TabEngine.closeTab(vis);
                         finish(); // onDestroy -> detach -> headless
                     } else {
-                        Toast2("当前没有显示中的标签页");
+                        Toast2(L.t("tab.noneVisible"));
                     }
                 } else {
                     TabEngine.hide();
@@ -457,7 +458,7 @@ public class TabActivity extends Activity {
                     i.putExtra("tab", e.tabId);
                     startActivity(i);
                 } catch (Exception ex) {
-                    Toast2("切换失败: " + ex.getMessage());
+                    Toast2(L.f("tab.switchFail", ex.getMessage()));
                 }
             }
         });
@@ -465,9 +466,9 @@ public class TabActivity extends Activity {
                 LinearLayout.LayoutParams.MATCH_PARENT, dip(340)));
 
         switcherDialog = new AlertDialog.Builder(this)
-                .setTitle("samcdp 前端 · " + (TabEngine.profileName() == null ? "" : TabEngine.profileName()))
+                .setTitle(L.f("tab.frontTitle", TabEngine.profileName() == null ? "" : TabEngine.profileName()))
                 .setView(box)
-                .setNegativeButton("关闭", (d, w) -> switcherDialog = null)
+                .setNegativeButton(L.t("tab.close"), (d, w) -> switcherDialog = null)
                 .setOnDismissListener(d -> {
                     if (switcherDialog == d) switcherDialog = null;
                 })
@@ -490,20 +491,20 @@ public class TabActivity extends Activity {
             String r = TabEngine.closeTab(e.tabId);
             boolean ok = r != null && r.contains("\"ok\":true");
             if (!ok) {
-                Toast2("关闭失败");
+                Toast2(L.t("tab.closeFail"));
                 return;
             }
             if (isFinishing()) return; // visible tab closed → engine went headless
-            Toast2("已关闭标签页");
+            Toast2(L.t("tab.closed"));
             reopenSwitcher();
         } else {
-            Toast2("关闭中…");
+            Toast2(L.t("tab.closing"));
             final int slot = e.slot;
             final String tabId = e.tabId;
             new Thread(() -> {
                 String r = post("http://127.0.0.1:" + (9400 + slot) + "/tabs/" + tabId + "/close", 1500);
                 MAIN.post(() -> {
-                    Toast2(r != null && r.contains("\"ok\":true") ? "已关闭标签页" : "关闭失败（对方 profile 未响应）");
+                    Toast2(r != null && r.contains("\"ok\":true") ? L.t("tab.closed") : L.t("tab.closeFailRemote"));
                     reopenSwitcher();
                 });
             }, "samcdp-tab-close").start();
@@ -623,8 +624,8 @@ public class TabActivity extends Activity {
                 try { Uri u = Uri.parse(e.url); host = u.getHost() == null ? e.url : u.getHost(); } catch (Exception ignored) {}
                 // v1.3.9: show the tab's remaining auto-close time in the switcher
                 String ttl = fmtTtl(e.closeInS);
-                sub.setText("[" + e.profile + (e.mine ? " · 当前" : "") + "]  " + host
-                        + (ttl.isEmpty() ? "" : " · " + ttl + "后自动关闭"));
+                sub.setText("[" + e.profile + (e.mine ? L.t("tab.current") : "") + "]  " + host
+                        + (ttl.isEmpty() ? "" : " · " + L.f("tab.ttlIn", ttl)));
                 sub.setTextColor(e.mine ? 0xFFD2610F : 0xFF888888);
 
                 // per-tab ✕ close (v1.3.8)

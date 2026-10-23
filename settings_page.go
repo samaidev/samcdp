@@ -4,13 +4,20 @@ package main
 // 布局参考 Android APK 设置页：远程地址(隧道)卡片在上、局域网地址在下方、
 // 隧道状态与错误实时显示、Key 决定模式（填写=子域名，留空=临时代理）
 // 远程 API 文档页面在 proxy_docs.go 中
+// v1.4.0: 页面按当前语言渲染（默认英文），静态文本走 %__MARK__% 替换，
+// JS 动态文本走服务端注入的 I18N 字典 + T(key)
 
-const settingsHTML = `<!DOCTYPE html>
-<html>
+import (
+	"encoding/json"
+	"strings"
+)
+
+const settingsTemplate = `<!DOCTYPE html>
+<html lang="%__HTML_LANG__%">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>samcdp 设置</title>
+<title>%__TITLE__%</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -95,121 +102,140 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
   box-shadow: 0 4px 16px rgba(0,0,0,.15); max-width: 80vw; word-break: break-all;
 }
 #toast.show { opacity: 1; }
+.lang-select {
+  padding: 8px 12px; border: 1px solid #deb887; border-radius: 8px;
+  background: #fffaf0; color: #5c4033; font-size: 13px; outline: none; cursor: pointer;
+}
 </style>
 </head>
 <body>
-<h1>⚙️ samcdp 设置</h1>
+<h1>⚙️ %__TITLE__%</h1>
 
-<h2>远程地址（aitun 隧道）</h2>
+<h2>%__REMOTE_H__%</h2>
 <div class="url-box">
-  <span class="url empty" id="remoteUrl">获取中...</span>
-  <button class="btn btn-secondary btn-sm" onclick="copyRemoteUrl()">复制</button>
+  <span class="url empty" id="remoteUrl">%__FETCHING__%</span>
+  <button class="btn btn-secondary btn-sm" onclick="copyRemoteUrl()">%__COPY__%</button>
 </div>
 <div class="error-line" id="tunnelError"></div>
 
-<h2 style="margin-top:16px">局域网地址</h2>
+<h2 style="margin-top:16px">%__LAN_H__%</h2>
 <div class="url-box muted">
-  <span class="url empty" id="lanUrl">获取中...</span>
-  <button class="btn btn-secondary btn-sm" onclick="copyLanUrl()">复制</button>
+  <span class="url empty" id="lanUrl">%__FETCHING__%</span>
+  <button class="btn btn-secondary btn-sm" onclick="copyLanUrl()">%__COPY__%</button>
 </div>
-<div class="hint" style="margin-top:6px">同一局域网内的设备可直接访问（隧道不可用时的备用入口）</div>
+<div class="hint" style="margin-top:6px">%__LAN_HINT__%</div>
 
-<h2>aitun 隧道</h2>
+<h2>%__TUNNEL_H__%</h2>
 <div class="field">
   <label>aitun Key</label>
-  <input type="password" id="aitunKey" value="" placeholder="留空则使用临时代理（随机地址）">
-  <div class="hint">在 aitun.cc 注册获取；填写后用固定子域名，留空用临时代理。保存后立即生效（自动重启隧道）</div>
+  <input type="password" id="aitunKey" value="" placeholder="%__KEY_PLACEHOLDER__%">
+  <div class="hint">%__KEY_HINT__%</div>
 </div>
-<div class="mode-line">当前模式：<b id="tunnelMode">—</b></div>
+<div class="mode-line">%__CUR_MODE__%<b id="tunnelMode">—</b></div>
 
-<h2>运行状态</h2>
+<h2>%__STATUS_H__%</h2>
 <div class="status-bar">
   <span class="status-dot off" id="statusDot"></span>
-  <span id="statusText">已停止</span>
+  <span id="statusText">%__TUNNEL_OFF__%</span>
 </div>
 <div class="status-bar">
   <span class="status-dot off" id="tunnelDot"></span>
-  <span id="tunnelText">隧道未启用</span>
+  <span id="tunnelText">%__TUNNEL_OFF__%</span>
 </div>
 
-<h2>Profile 管理</h2>
+<h2>%__PROFILES_H__%</h2>
 <div id="profileList"></div>
-<button class="btn btn-secondary btn-sm" onclick="addProfile()" style="margin-top:8px">+ 新增 Profile</button>
+<button class="btn btn-secondary btn-sm" onclick="addProfile()" style="margin-top:8px">%__ADD_PROFILE__%</button>
 
-<h2>Token</h2>
+<h2>%__TOKEN_H__%</h2>
 <div class="field">
   <input type="text" id="tokenValue" value="" readonly>
-  <div class="hint">远程 API 鉴权用，格式: ?token=xxx</div>
-  <button class="btn btn-secondary" onclick="regenerateToken()" style="margin-top:8px">重新生成</button>
+  <div class="hint">%__TOKEN_HINT__%</div>
+  <button class="btn btn-secondary" onclick="regenerateToken()" style="margin-top:8px">%__REGEN__%</button>
 </div>
 
-<button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+<div class="field" style="margin-top:14px">
+  <label>%__LANG_LABEL__%</label>
+  <select id="langSel" class="lang-select" onchange="changeLang(this.value)">
+    <option value="en">English</option>
+    <option value="zh">中文</option>
+  </select>
+</div>
+
+<button class="btn btn-primary" onclick="saveSettings()">%__SAVE_BTN__%</button>
 
 <div id="toast"></div>
 
 <script>
-var baseUrl = '';
-var copyableUrl = '';
+var I18N = %__I18N_JSON__%;
+function T(k){ return I18N[k] || k; }
+// preselect the language the page was rendered with
+document.getElementById('langSel').value = '%__HTML_LANG__%';
+
+function changeLang(lang) {
+  fetch('/api/lang', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({lang: lang})}).then(function(){ location.reload(); });
+}
 
 function saveSettings() {
   var key = document.getElementById('aitunKey').value.trim();
   fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({aitun_key: key})}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast(d.msg || '已保存!'); refreshStatus(); }
-    else { showToast(d.error || '保存失败'); }
+    if (d.ok) { showToast(d.msg || T('saved')); refreshStatus(); }
+    else { showToast(d.error || T('saveFail')); }
   });
 }
 
 function regenerateToken() {
-  if (!confirm('重新生成 Token？旧地址将立即失效。')) return;
+  if (!confirm(T('regenConfirm'))) return;
   fetch('/api/regenerate-token', {method:'POST'}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast('Token 已重新生成!'); refreshStatus(); }
+    if (d.ok) { showToast(T('regenDone')); refreshStatus(); }
   });
 }
 
 function addProfile() {
-  var name = prompt('输入 Profile 名称（如 agent-3）:');
+  var name = prompt(T('namePrompt'));
   if (!name || !name.trim()) return;
   name = name.trim();
   fetch('/api/profile/add', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name: name})}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast('已添加 ' + name); refreshStatus(); }
-    else { showToast(d.error || '添加失败'); }
+    if (d.ok) { showToast(T('added') + name); refreshStatus(); }
+    else { showToast(d.error || T('addFail')); }
   });
 }
 
 function deleteProfile(name) {
-  if (!confirm('删除 Profile "' + name + '"？')) return;
+  if (!confirm(T('delConfirm') + name + T('delConfirmEnd'))) return;
   fetch('/api/profile/delete', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name: name})}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast('已删除 ' + name); refreshStatus(); }
+    if (d.ok) { showToast(T('deleted') + name); refreshStatus(); }
   });
 }
 
 function toggleProfile(name, enabled) {
   fetch('/api/profile/toggle', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({name: name, enabled: enabled})}).then(function(r){return r.json();}).then(function(d){
-    if (d.ok) { showToast('已保存'); refreshStatus(); }
+    if (d.ok) { showToast(T('saved')); refreshStatus(); }
   });
 }
 
 function copyRemoteUrl() {
-  if (!copyableUrl) { showToast('地址未就绪'); return; }
+  if (!copyableUrl) { showToast(T('urlNotReady')); return; }
   var token = document.getElementById('tokenValue').value;
   var url = copyableUrl + (token && token != '-' ? '?token=' + token : '');
-  navigator.clipboard.writeText(url).then(function(){ showToast('已复制: ' + url); });
+  navigator.clipboard.writeText(url).then(function(){ showToast(T('copied') + url); });
 }
 
 function copyLanUrl() {
   var lan = document.getElementById('lanUrl').textContent;
-  if (!lan || lan == '获取中...' || lan == '未启动') { showToast('地址未就绪'); return; }
+  if (!lan || lan == T('fetching') || lan == T('notStarted')) { showToast(T('urlNotReady')); return; }
   var token = document.getElementById('tokenValue').value;
   var url = lan + (token && token != '-' ? '?token=' + token : '');
-  navigator.clipboard.writeText(url).then(function(){ showToast('已复制: ' + url); });
+  navigator.clipboard.writeText(url).then(function(){ showToast(T('copied') + url); });
 }
 
 function copyText(t) {
-  navigator.clipboard.writeText(t).then(function(){ showToast('已复制'); });
+  navigator.clipboard.writeText(t).then(function(){ showToast(T('copiedShort')); });
 }
 
 function refreshStatus() {
@@ -232,10 +258,10 @@ function refreshStatus() {
 
     if (d.running) {
       dot.className = 'status-dot running';
-      text.textContent = '运行中 (' + d.profiles.length + ' profiles)';
+      text.textContent = T('runningN') + d.profiles.length + T('profilesN');
     } else {
       dot.className = 'status-dot off';
-      text.textContent = '已停止';
+      text.textContent = T('stopped');
     }
 
     // 远程地址规则（与 APK 一致）：隧道在线→隧道地址；连接中→占位提示；未启用→提示
@@ -244,10 +270,10 @@ function refreshStatus() {
       urlEl.textContent = baseUrl;
     } else if (d.tunnel_running) {
       urlEl.className = 'url empty connecting';
-      urlEl.textContent = '隧道连接中…（上线后自动显示公网地址）';
+      urlEl.textContent = T('connecting');
     } else {
       urlEl.className = 'url empty';
-      urlEl.textContent = d.running ? '隧道未启用' : '服务未启动';
+      urlEl.textContent = d.running ? T('tunnelDisabled') : T('svcStopped');
     }
 
     // 局域网地址：始终显示（隧道不可用时的备用入口）
@@ -256,7 +282,7 @@ function refreshStatus() {
       lanEl.textContent = lan;
     } else {
       lanEl.className = 'url empty';
-      lanEl.textContent = '未启动';
+      lanEl.textContent = T('notStarted');
     }
 
     // 隧道错误行（实时，来自 aitun 输出）
@@ -273,21 +299,21 @@ function refreshStatus() {
     var tText = document.getElementById('tunnelText');
     if (baseUrl) {
       tDot.className = 'status-dot running';
-      tText.textContent = '隧道在线';
+      tText.textContent = T('tunnelOnline');
     } else if (d.tunnel_running) {
       tDot.className = 'status-dot connecting';
-      tText.textContent = '隧道连接中…';
+      tText.textContent = T('tunnelConn');
     } else {
       tDot.className = 'status-dot off';
-      tText.textContent = '隧道未启用';
+      tText.textContent = T('tunnelDisabled');
     }
 
     // 当前模式（由 Key 是否填写决定，与 APK 一致）
     var modeEl = document.getElementById('tunnelMode');
     if (d.aitun_key) {
-      modeEl.textContent = '子域名（固定地址）';
+      modeEl.textContent = T('modeSub');
     } else {
-      modeEl.textContent = '临时代理（随机地址）';
+      modeEl.textContent = T('modeTemp');
     }
 
     // Render profiles
@@ -297,15 +323,15 @@ function refreshStatus() {
       var card = document.createElement('div');
       card.className = 'profile-card';
       var statusClass = p.running ? 'on' : 'off';
-      var statusText = p.running ? '● 运行中' : '○ 已停止';
+      var statusText = p.running ? T('profRunning') : T('profStopped');
       card.innerHTML =
         '<div class="profile-info">' +
           '<div class="profile-name">' + p.name + '</div>' +
-          '<div class="profile-port">Port: ' + p.port + (p.enabled ? '' : ' (已禁用)') + '</div>' +
+          '<div class="profile-port">Port: ' + p.port + (p.enabled ? '' : ' ' + T('profDisabled')) + '</div>' +
           '<div class="profile-status ' + statusClass + '">' + statusText + '</div>' +
         '</div>' +
         '<div class="profile-actions">' +
-          '<button class="btn btn-sm btn-danger" onclick="deleteProfile(\'' + p.name + '\')">删除</button>' +
+          '<button class="btn btn-sm btn-danger" onclick="deleteProfile(\'' + p.name + '\')">' + T('delete') + '</button>' +
           '<label class="profile-toggle">' +
             '<input type="checkbox" ' + (p.enabled ? 'checked' : '') + ' onchange="toggleProfile(\'' + p.name + '\', this.checked)">' +
             '<span class="slider"></span>' +
@@ -329,7 +355,69 @@ refreshStatus();
 </body>
 </html>`
 
-// renderSettingsHTML 渲染设置页面
+// settingsJSDict — 注入到页面的 JS 动态文本字典
+func settingsJSDict() map[string]string {
+	return map[string]string{
+		"saved":         t("sp.jsSaved"),
+		"saveFail":      t("sp.jsSaveFail"),
+		"regenConfirm":  t("sp.jsRegenConfirm"),
+		"regenDone":     t("sp.jsRegenDone"),
+		"namePrompt":    t("sp.jsNamePrompt"),
+		"added":         t("sp.jsAdded"),
+		"addFail":       t("sp.jsAddFail"),
+		"delConfirm":    t("sp.jsDelConfirm"),
+		"delConfirmEnd": t("sp.jsDelConfirmEnd"),
+		"deleted":       t("sp.jsDeleted"),
+		"urlNotReady":   t("sp.jsUrlNotReady"),
+		"copied":        t("sp.jsCopied"),
+		"copiedShort":   t("sp.jsCopiedShort"),
+		"runningN":      t("sp.jsRunningN"),
+		"profilesN":     t("sp.jsProfilesN"),
+		"stopped":       t("sp.jsStopped"),
+		"connecting":    t("sp.jsConnecting"),
+		"tunnelDisabled": t("sp.tunnelOff"),
+		"svcStopped":    t("sp.jsSvcStopped"),
+		"tunnelOnline":  t("sp.jsTunnelOnline"),
+		"tunnelConn":    t("sp.jsTunnelConn"),
+		"modeSub":       t("sp.jsModeSub"),
+		"modeTemp":      t("sp.jsModeTemp"),
+		"profRunning":   t("sp.jsProfRunning"),
+		"profStopped":   t("sp.jsProfStopped"),
+		"profDisabled":  t("sp.jsProfDisabled"),
+		"delete":        t("sp.jsDelete"),
+		"fetching":      t("sp.fetching"),
+		"notStarted":    t("sp.notStarted"),
+	}
+}
+
+// renderSettingsHTML 按当前语言渲染设置页面
 func renderSettingsHTML() string {
-	return settingsHTML
+	dictJSON, err := json.Marshal(settingsJSDict())
+	if err != nil {
+		dictJSON = []byte("{}")
+	}
+	repl := strings.NewReplacer(
+		"%__HTML_LANG__%", string(currentLang),
+		"%__TITLE__%", t("settings.title"),
+		"%__REMOTE_H__%", t("sp.remoteH"),
+		"%__LAN_H__%", t("sp.lanH"),
+		"%__LAN_HINT__%", t("sp.lanHint"),
+		"%__TUNNEL_H__%", t("sp.tunnelH"),
+		"%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
+		"%__KEY_HINT__%", t("sp.keyHint"),
+		"%__CUR_MODE__%", t("sp.curMode"),
+		"%__STATUS_H__%", t("sp.statusH"),
+		"%__TUNNEL_OFF__%", t("sp.tunnelOff"),
+		"%__PROFILES_H__%", t("sp.profilesH"),
+		"%__ADD_PROFILE__%", t("settings.addProfile"),
+		"%__TOKEN_H__%", t("sp.tokenH"),
+		"%__TOKEN_HINT__%", t("sp.tokenHint"),
+		"%__REGEN__%", t("settings.regenerate"),
+		"%__LANG_LABEL__%", t("sp.langLabel"),
+		"%__COPY__%", t("sp.copy"),
+		"%__FETCHING__%", t("sp.fetching"),
+		"%__SAVE_BTN__%", t("sp.saveBtn"),
+		"%__I18N_JSON__%", string(dictJSON),
+	)
+	return repl.Replace(settingsTemplate)
 }

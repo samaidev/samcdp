@@ -47,6 +47,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        L.load(this); // v1.4.0: language pref before any UI string is built
         setContentView(R.layout.activity_main);
 
         remoteUrl = findViewById(R.id.remote_url);
@@ -64,6 +65,8 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         tunnelListener = this::uiPostRender;
         TunnelManager.addListener(tunnelListener);
 
+        applyStaticTexts(); // v1.4.0: XML labels come from the dictionary
+
         Prefs p = new Prefs(this);
         aitunKeyInput.setText(p.aitunKey());
         tokenInput.setText(p.token());
@@ -76,7 +79,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         findViewById(R.id.btn_copy).setOnClickListener(v -> {
             // 隧道连接中还没有可用远程地址，复制局域网地址会造成误导
             if (TunnelManager.state() == TunnelManager.State.CONNECTING) {
-                Toast.makeText(this, "隧道连接中，上线后即可复制远程地址", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, L.t("main.copyConnecting"), Toast.LENGTH_SHORT).show();
                 return;
             }
             String s = remoteUrl.getText().toString();
@@ -85,17 +88,30 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             String full = token.isEmpty() ? s : s + "?token=" + token;
             ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             cm.setPrimaryClip(ClipData.newPlainText("url", full));
-            Toast.makeText(this, "已复制 " + full, Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, L.f("main.copied", full), Toast.LENGTH_SHORT).show();
         });
 
         btnTunnel.setOnClickListener(v -> toggleTunnel());
 
         findViewById(R.id.btn_battery).setOnClickListener(v -> requestBatteryOptimizationExemption());
 
+        // v1.4.0: language switch — persist then recreate so every static label re-renders
+        android.widget.RadioButton langEn = findViewById(R.id.lang_en);
+        android.widget.RadioButton langZh = findViewById(R.id.lang_zh);
+        (L.zh() ? langZh : langEn).setChecked(true);
+        android.widget.RadioGroup langGroup = findViewById(R.id.lang_group);
+        langGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            String want = checkedId == R.id.lang_zh ? "zh" : "en";
+            if (!want.equals(L.lang())) {
+                L.set(this, want);
+                recreate();
+            }
+        });
+
         findViewById(R.id.btn_add_profile).setOnClickListener(v -> {
             List<Profile> list = ProfileManager.profiles();
             if (list.size() >= ProfileManager.MAX_PROFILES) {
-                Toast.makeText(this, "最多 " + ProfileManager.MAX_PROFILES + " 个 Profile（独立进程隔离）",
+                Toast.makeText(this, L.f("main.maxProfiles", ProfileManager.MAX_PROFILES),
                         Toast.LENGTH_LONG).show();
                 return;
             }
@@ -122,7 +138,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             if (api != null) api.setToken(t);
             ProfileManager.dispatchLog("[config] token regenerated"
                     + (api != null ? " and hot-applied" : " (saved; applies when server starts)"));
-            Toast.makeText(this, "已重新生成并立即生效", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, L.t("main.regenDone"), Toast.LENGTH_SHORT).show();
         });
 
         findViewById(R.id.btn_save).setOnClickListener(v -> saveSettings());
@@ -141,6 +157,43 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
 
     private void uiPostRender() {
         ui.post(this::render);
+    }
+
+    /** v1.4.0: override every Chinese default string baked into activity_main.xml. */
+    private void applyStaticTexts() {
+        setText(R.id.title, "main.title");
+        setText(R.id.remote_label, "main.remoteAddr");
+        setText(R.id.btn_copy, "main.copy");
+        setText(R.id.api_hint, "main.apiHint");
+        setText(R.id.tunnel_section, "main.aitunTunnel");
+        setHint(R.id.aitun_key, "main.keyFieldHint");
+        setText(R.id.key_hint2, "main.keyHint2");
+        setText(R.id.mode_temp, "main.modeTempRadio");
+        setText(R.id.mode_subdomain, "main.modeSubRadio");
+        setText(R.id.btn_tunnel, "main.startTunnel");
+        setText(R.id.btn_battery, "main.battery");
+        setText(R.id.tunnel_status, "main.tunnelOffStatic");
+        setText(R.id.status_section, "main.runStatus");
+        setText(R.id.status, "main.stoppedStatic");
+        setText(R.id.profiles_section, "main.profiles");
+        setText(R.id.btn_add_profile, "main.addProfile");
+        setText(R.id.token_hint, "main.tokenHint");
+        setText(R.id.btn_regen, "main.regen");
+        setText(R.id.btn_save, "main.saveSettings");
+        setText(R.id.log_section, "main.logs");
+        setText(R.id.lang_label, "main.langLabel");
+        setText(R.id.lang_en, "main.langEn");
+        setText(R.id.lang_zh, "main.langZh");
+    }
+
+    private void setText(int viewId, String key) {
+        View v = findViewById(viewId);
+        if (v instanceof android.widget.TextView) ((android.widget.TextView) v).setText(L.t(key));
+    }
+
+    private void setHint(int viewId, String key) {
+        View v = findViewById(viewId);
+        if (v instanceof android.widget.EditText) ((android.widget.EditText) v).setHint(L.t(key));
     }
 
     private void toggleService() {
@@ -171,7 +224,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             }
             boolean subdomain = p.tunnelMode().equals("subdomain");
             if (subdomain && p.aitunKey().isEmpty()) {
-                Toast.makeText(this, "子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, L.t("main.subdomainNeedKey"), Toast.LENGTH_LONG).show();
                 return;
             }
             TunnelManager.start(getApplicationContext(), p.tunnelMode(), p.aitunKey(), p.port());
@@ -186,7 +239,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             String pkg = getPackageName();
             if (pm.isIgnoringBatteryOptimizations(pkg)) {
                 startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-                Toast.makeText(this, "已忽略电池优化，可在系统设置中撤回", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, L.t("main.batteryIgnored"), Toast.LENGTH_SHORT).show();
             } else {
                 @SuppressWarnings("BatteryLife")
                 Intent i = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
@@ -194,7 +247,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 startActivity(i);
             }
         } catch (Exception e) {
-            Toast.makeText(this, "无法打开电池优化设置: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, L.f("main.batteryFail", e.getMessage()), Toast.LENGTH_LONG).show();
         }
     }
 
@@ -220,7 +273,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         ProfileManager.saveProfiles();
         ProfileManager.dispatchLog("[config] settings saved"
                 + (tokenChanged ? " (token hot-applied)" : ""));
-        Toast.makeText(this, tokenChanged ? "设置已保存，token 已立即生效" : "设置已保存",
+        Toast.makeText(this, tokenChanged ? L.t("main.savedToken") : L.t("main.saved"),
                 Toast.LENGTH_SHORT).show();
 
         // 只有隧道在跑且 mode/key 确实变化时才重启隧道；token 变化不再牵连隧道/服务
@@ -232,7 +285,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             if (tunnelMode.equals("subdomain") && key.isEmpty()) {
                 // never silently restart as something else; say exactly what was skipped
                 ProfileManager.dispatchLog("[aitun] restart skipped: subdomain mode without key");
-                Toast.makeText(this, "隧道已停止：子域名模式需要填入 aitun Key", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, L.t("main.tunnelStoppedNeedKey"), Toast.LENGTH_LONG).show();
             } else {
                 ui.postDelayed(() -> TunnelManager.start(getApplicationContext(), tunnelMode, key,
                         new Prefs(this).port()), 800);
@@ -289,7 +342,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             remote = TunnelManager.url();
             remoteUrl.setTextColor(getColor(R.color.url_green));
         } else if (cur == TunnelManager.State.CONNECTING) {
-            remote = "隧道连接中…（上线后显示临时代理/子域名地址）";
+            remote = L.t("main.tunnelConnecting");
             remoteUrl.setTextColor(getColor(R.color.text_dim));
         } else {
             remote = lan;
@@ -303,14 +356,14 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         for (Profile pr : list) if (pr.running) runningCount++;
         boolean up = running;
         dot.setBackgroundResource(up ? R.drawable.dot_green : R.drawable.dot_red);
-        statusText.setText(up ? "运行中（" + runningCount + " profiles）" : "已停止");
+        statusText.setText(up ? L.f("main.statusRunning", runningCount) : L.t("main.statusStopped"));
         statusText.setTextColor(getColor(up ? R.color.status_green : R.color.text_dim));
 
         // tunnel line
         TunnelManager.State ts = TunnelManager.state();
         if (ts == TunnelManager.State.ONLINE) {
-            String runMode = "subdomain".equals(TunnelManager.mode()) ? "子域名" : "临时代理";
-            String txt = "● 隧道在线: " + TunnelManager.url() + "（" + runMode + "）";
+            String runMode = "subdomain".equals(TunnelManager.mode()) ? L.t("main.modeSub") : L.t("main.modeTemp");
+            String txt = L.f("main.tunnelOnline", TunnelManager.url(), runMode);
             // unsaved-edit divergence warning: what the user sees in the form
             // must be visibly reconciled against what is actually running
             String uiMode = ((android.widget.RadioButton) findViewById(R.id.mode_subdomain)).isChecked()
@@ -320,30 +373,29 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
             boolean keyDiffers = "subdomain".equals(TunnelManager.mode())
                     && !uiKey.equals(TunnelManager.keyUsed());
             if (modeDiffers || keyDiffers) {
-                txt += "\n⚠ 界面选项与运行中隧道不一致（运行中：" + runMode
-                        + "）。改动需停止隧道后重新启动才会生效";
+                txt += "\n" + L.f("main.tunnelModeMismatch", runMode);
                 tunnelStatus.setTextColor(getColor(R.color.dot_orange));
             } else {
                 tunnelStatus.setTextColor(getColor(R.color.status_green));
             }
             tunnelStatus.setText(txt);
-            btnTunnel.setText("停止隧道");
+            btnTunnel.setText(L.t("main.stopTunnel"));
         } else if (ts == TunnelManager.State.CONNECTING) {
-            String connecting = "● 隧道连接中…";
+            String connecting = L.t("main.connecting");
             if (TunnelManager.lastError() != null) {
-                connecting += "（上次错误: " + TunnelManager.lastError() + "）";
+                connecting += " " + L.f("main.lastErr", TunnelManager.lastError());
             }
             tunnelStatus.setText(connecting);
             tunnelStatus.setTextColor(getColor(R.color.dot_orange));
-            btnTunnel.setText("停止隧道");
+            btnTunnel.setText(L.t("main.stopTunnel"));
         } else if (ts == TunnelManager.State.ERROR) {
-            tunnelStatus.setText("● 隧道错误: " + TunnelManager.lastError());
+            tunnelStatus.setText(L.f("main.tunnelError", TunnelManager.lastError()));
             tunnelStatus.setTextColor(getColor(R.color.danger));
-            btnTunnel.setText("启动隧道");
+            btnTunnel.setText(L.t("main.startTunnel"));
         } else {
-            tunnelStatus.setText("隧道未启动（局域网: " + lan + "）");
+            tunnelStatus.setText(L.f("main.tunnelOff", lan));
             tunnelStatus.setTextColor(getColor(R.color.text_dim));
-            btnTunnel.setText("启动隧道");
+            btnTunnel.setText(L.t("main.startTunnel"));
         }
 
         renderProfiles(list);
@@ -367,9 +419,9 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 String extra = pr.autoStopAtMs > 0
                         ? " · " + Math.max(0, (pr.autoStopAtMs - System.currentTimeMillis()) / 60000) + "m"
                         : "";
-                state = "● 运行中 · runner #" + pr.slot + extra;
+                state = L.f("main.runnerOn", pr.slot, extra);
             } else {
-                state = pr.enabled ? "○ 空闲" : "○ 已禁用";
+                state = pr.enabled ? L.t("main.idle") : L.t("main.disabled");
             }
             info.setText(pr.name + "\nPort: " + pr.port + "\n" + state);
             info.setTextColor(getColor(pr.running ? R.color.heading : R.color.text));
@@ -413,7 +465,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         row.addView(info);
 
         Button show = new Button(this);
-        show.setText("显示WebView");
+        show.setText(L.t("main.showWebView"));
         show.setAllCaps(false);
         show.setTextSize(12);
         // SAME pattern as the 删除 button: colored text on the light card bg that
@@ -424,20 +476,20 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         show.setPadding(26, 10, 26, 10);
         show.setOnClickListener(v -> {
             if (!pr.running) {
-                Toast.makeText(this, "profile 未运行，先打开开关启动", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, L.t("main.notRunning"), Toast.LENGTH_SHORT).show();
                 return;
             }
             // Android 10+ / ColorOS: TabActivity is launched from the runner's
             // background service process — without the "display over other apps"
             // permission the system silently drops that launch (webview never shows)
             if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, "弹出 WebView 需要「显示在应用上层」权限，请在接下来的页面允许",
+                Toast.makeText(this, L.t("main.overlayPerm"),
                         Toast.LENGTH_LONG).show();
                 try {
                     startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:" + getPackageName())));
                 } catch (Exception e) {
-                    Toast.makeText(this, "请在系统设置中授予悬浮窗权限后重试", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, L.t("main.overlayRetry"), Toast.LENGTH_LONG).show();
                 }
                 return;
             }
@@ -481,12 +533,11 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
                 ui.post(() -> {
                     show.setEnabled(true);
                     if (!fOk) {
-                        Toast.makeText(this, "显示失败: " + fErr, Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, L.f("main.showFailed", fErr), Toast.LENGTH_LONG).show();
                     } else if (!fUp) {
-                        Toast.makeText(this, "WebView 请求已发出但未显示：请在 系统设置→应用管理→samcdp "
-                                + "允许「后台弹出界面」和「自启动」", Toast.LENGTH_LONG).show();
+                        Toast.makeText(this, L.t("main.showNoPopup"), Toast.LENGTH_LONG).show();
                     } else {
-                        Toast.makeText(this, "WebView 已显示", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, L.t("main.shown"), Toast.LENGTH_SHORT).show();
                     }
                     ui.postDelayed(this::render, 500);
                 });
@@ -495,7 +546,7 @@ public class MainActivity extends Activity implements ProfileManager.LogSink {
         row.addView(show);
 
         Button del = new Button(this);
-        del.setText("删除");
+        del.setText(L.t("main.delete"));
         del.setAllCaps(false);
         del.setTextSize(12);
         del.setTextColor(getColor(R.color.danger));

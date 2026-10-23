@@ -2,9 +2,11 @@ package main
 
 // proxy_docs.go — CDP 管理代理的 API 文档页面
 // 访问根路径 / 时展示所有 API 接口、鉴权方式、示例
+// v1.4.0: 页面按当前语言渲染（默认英文）
 
 import (
 	"net/http"
+	"strings"
 )
 
 // handleDocsPage 返回 API 文档 HTML 页面
@@ -28,7 +30,7 @@ func (p *CDPProxy) handleDocsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func renderLockedDocs(baseURL string) string {
-	return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+	return `<!DOCTYPE html><html lang="` + string(currentLang) + `"><head><meta charset="UTF-8">
 <title>samcdp</title>
 <style>
 body{font-family:system-ui,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:40px;margin:0}
@@ -41,15 +43,49 @@ code{background:#0f3460;padding:2px 8px;border-radius:4px;color:#ff8c00}
 <div class="box">
 <h1>🔒 samcdp</h1>
 <div class="locked">
-<p style="font-size:18px">需要鉴权才能访问</p>
-<p class="hint">在 URL 后添加 <code>?token=YOUR_TOKEN</code></p>
-<p class="hint">或设置请求头 <code>Authorization: Bearer YOUR_TOKEN</code></p>
+<p style="font-size:18px">` + t("docs.needAuth") + `</p>
+<p class="hint">` + t("docs.addToken") + ` <code>?token=YOUR_TOKEN</code></p>
+<p class="hint">` + t("docs.orHeader") + ` <code>Authorization: Bearer YOUR_TOKEN</code></p>
 </div>
 </div></body></html>`
 }
 
+// pyExample 按当前语言生成 Python 快速接入示例（注释随语言切换）
+func pyExample(baseURL, token string) string {
+	c1 := "# List all profiles"
+	c2 := "# Start agent-1's Chrome (auto-closes after 30 min)"
+	c3 := "# Open Baidu (lifetime REQUIRED: 3600s = 1h, auto-closes on expiry)"
+	c4 := "# List tabs"
+	c5 := "# Stop manually when done"
+	if currentLang == LangZH {
+		c1 = "# 列出所有 profile"
+		c2 = "# 启动 agent-1 的 Chrome（运行 30 分钟后自动关闭）"
+		c3 = "# 打开百度（必须声明存活时长：3600 秒 = 1 小时，到期自动关闭）"
+		c4 = "# 查看标签页"
+		c5 = "# 用完手动停止"
+	}
+	var b strings.Builder
+	b.WriteString("import requests&#10;BASE = \"")
+	b.WriteString(baseURL)
+	b.WriteString("\"&#10;TOKEN = \"")
+	b.WriteString(token)
+	b.WriteString("\"&#10;")
+	b.WriteString(c1)
+	b.WriteString("&#10;r = requests.get(f\"{BASE}/api/profiles?token={TOKEN}\")&#10;")
+	b.WriteString(c2)
+	b.WriteString("&#10;r = requests.post(f\"{BASE}/api/profiles/agent-1/start?token={TOKEN}&duration=30\")&#10;")
+	b.WriteString(c3)
+	b.WriteString("&#10;r = requests.post(f\"{BASE}/api/profiles/agent-1/tabs/new?token={TOKEN}&url=https://www.baidu.com&close_after=3600\")&#10;")
+	b.WriteString(c4)
+	b.WriteString("&#10;r = requests.get(f\"{BASE}/api/profiles/agent-1/tabs?token={TOKEN}\")&#10;")
+	b.WriteString(c5)
+	b.WriteString("&#10;r = requests.post(f\"{BASE}/api/profiles/agent-1/stop?token={TOKEN}\")")
+	return b.String()
+}
+
 func renderFullDocs(baseURL, token string) string {
-	return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+	var b strings.Builder
+	b.WriteString(`<!DOCTYPE html><html lang="` + string(currentLang) + `"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>samcdp API</title>
 <style>
@@ -85,42 +121,42 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 </style></head><body>
 <div class="container">
 <h1>🚀 samcdp API</h1>
-<p class="subtitle">远程 Chrome CDP 管理接口 · 单隧道多 Profile 架构</p>
+<p class="subtitle">` + t("docs.subtitle") + `</p>
 
 <div class="token-box">
 <span class="label">Base URL</span>
 <span class="value" id="baseUrl">` + baseURL + `</span>
-<button class="copy-btn" onclick="copyText('` + baseURL + `')">复制</button>
+<button class="copy-btn" onclick="copyText('` + baseURL + `')">` + t("sp.copy") + `</button>
 </div>
 
 <div class="token-box">
 <span class="label">Token</span>
 <span class="value" id="token">` + token + `</span>
-<button class="copy-btn" onclick="copyText('` + token + `')">复制</button>
+<button class="copy-btn" onclick="copyText('` + token + `')">` + t("sp.copy") + `</button>
 </div>
 
 <div class="section">
-<h2>鉴权方式</h2>
+<h2>` + t("docs.authH") + `</h2>
 <div class="endpoint">
 <span class="method GET">PARAM</span>
 <div><div class="path">?token=` + token + `</div>
-<div class="desc">在 URL 查询参数中传递 token</div></div>
+<div class="desc">` + t("docs.authParam") + `</div></div>
 </div>
 <div class="endpoint">
 <span class="method GET">HEADER</span>
 <div><div class="path">Authorization: Bearer ` + token + `</div>
-<div class="desc">在请求头中传递 token</div></div>
+<div class="desc">` + t("docs.authHeader") + `</div></div>
 </div>
 </div>
 
 <div class="section">
-<h2>Profile 管理 <span class="badge">/api/profiles</span></h2>
+<h2>` + t("docs.profilesH") + ` <span class="badge">/api/profiles</span></h2>
 
 <div class="endpoint">
 <span class="method GET">GET</span>
 <div>
 <div class="path">/api/profiles?token=TOKEN</div>
-<div class="desc">列出所有 profile 及运行状态、标签页数量</div>
+<div class="desc">` + t("docs.dListProf") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -s "` + baseURL + `/api/profiles?token=` + token + `" | python -m json.tool</div>
 </div>
 </div>
@@ -129,7 +165,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method POST">POST</span>
 <div>
 <div class="path">/api/profiles?token=TOKEN</div>
-<div class="desc">创建新 profile（自动分配端口）</div>
+<div class="desc">` + t("docs.dCreateProf") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles?token=` + token + `" -H "Content-Type: application/json" -d '{"name":"agent-3"}'</div>
 </div>
 </div>
@@ -138,7 +174,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method DELETE">DEL</span>
 <div>
 <div class="path">/api/profiles/NAME?token=TOKEN</div>
-<div class="desc">删除指定 profile（停止 Chrome + 移除配置）</div>
+<div class="desc">` + t("docs.dDelProf") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X DELETE "` + baseURL + `/api/profiles/agent-3?token=` + token + `"</div>
 </div>
 </div>
@@ -147,9 +183,9 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method POST">POST</span>
 <div>
 <div class="path">/api/profiles/NAME/start?token=TOKEN&duration=MINUTES</div>
-<div class="desc">启动指定 profile 的 Chrome。必须指定运行时长，到期后自动关闭 Chrome 防止窗口堆积</div>
+<div class="desc">` + t("docs.dStart") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles/agent-3/start?token=` + token + `&duration=30"</div>
-<div class="desc" style="color:#ff8c00">⚠ duration 为必填参数（单位：分钟），超时后 Chrome 自动关闭</div>
+<div class="desc" style="color:#ff8c00">` + t("docs.dStartWarn") + `</div>
 </div>
 </div>
 
@@ -157,20 +193,20 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method POST">POST</span>
 <div>
 <div class="path">/api/profiles/NAME/stop?token=TOKEN</div>
-<div class="desc">停止指定 profile 的 Chrome（移除路由，隧道不动）</div>
+<div class="desc">` + t("docs.dStop") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles/agent-3/stop?token=` + token + `"</div>
 </div>
 </div>
 </div>
 
 <div class="section">
-<h2>标签页管理 <span class="badge">/api/profiles/NAME/tabs</span></h2>
+<h2>` + t("docs.tabsH") + ` <span class="badge">/api/profiles/NAME/tabs</span></h2>
 
 <div class="endpoint">
 <span class="method GET">GET</span>
 <div>
 <div class="path">/api/profiles/NAME/tabs?token=TOKEN</div>
-<div class="desc">列出指定 profile 的所有标签页</div>
+<div class="desc">` + t("docs.dListTabs") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -s "` + baseURL + `/api/profiles/agent-1/tabs?token=` + token + `" | python -m json.tool</div>
 </div>
 </div>
@@ -179,9 +215,9 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method POST">POST</span>
 <div>
 <div class="path">/api/profiles/NAME/tabs/new?url=URL&close_after=SECONDS&token=TOKEN</div>
-<div class="desc">在指定 profile 中打开新标签页。必须声明存活时长，到期自动关闭标签回收内存</div>
+<div class="desc">` + t("docs.dNewTab") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X POST "` + baseURL + `/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&close_after=3600&token=` + token + `"</div>
-<div class="desc" style="color:#ff8c00">⚠ close_after 为必填参数（单位：秒，1..604800），到期后标签自动关闭；缺省会返回 400 错误。手机端人工打开的标签默认 1 小时自动关闭</div>
+<div class="desc" style="color:#ff8c00">` + t("docs.dNewTabWarn") + `</div>
 </div>
 </div>
 
@@ -189,20 +225,20 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method DELETE">DEL</span>
 <div>
 <div class="path">/api/profiles/NAME/tabs/TAB_ID?token=TOKEN</div>
-<div class="desc">关闭指定标签页</div>
+<div class="desc">` + t("docs.dCloseTab") + `</div>
 <div class="example" onclick="copyText(this.textContent)">curl -X DELETE "` + baseURL + `/api/profiles/agent-1/tabs/A1B2C3D4?token=` + token + `"</div>
 </div>
 </div>
 </div>
 
 <div class="section">
-<h2>CDP 原生透传 <span class="badge">/&lt;profile&gt;/json/*</span></h2>
+<h2>` + t("docs.cdpH") + ` <span class="badge">/&lt;profile&gt;/json/*</span></h2>
 
 <div class="endpoint">
 <span class="method GET">GET</span>
 <div>
 <div class="path">/agent-1/json/version?token=TOKEN</div>
-<div class="desc">获取 Chrome 版本信息</div>
+<div class="desc">` + t("docs.dVersion") + `</div>
 </div>
 </div>
 
@@ -210,7 +246,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method GET">GET</span>
 <div>
 <div class="path">/agent-1/json/list?token=TOKEN</div>
-<div class="desc">列出所有标签页（CDP 原生格式）</div>
+<div class="desc">` + t("docs.dList") + `</div>
 </div>
 </div>
 
@@ -218,7 +254,7 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method GET">GET</span>
 <div>
 <div class="path">/agent-1/json/new/URL?token=TOKEN</div>
-<div class="desc">CDP 原生打开标签页（Chrome 154 需 PUT）。注意：走 CDP 透传打开的标签不受 close_after 管理，请自行负责关闭</div>
+<div class="desc">` + t("docs.dNewCDP") + `</div>
 </div>
 </div>
 
@@ -226,18 +262,18 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 <span class="method WS">WS</span>
 <div>
 <div class="path">/agent-1/devtools/page/TAB_ID?token=TOKEN</div>
-<div class="desc">WebSocket 连接到 CDP DevTools 协议</div>
+<div class="desc">` + t("docs.dWS") + `</div>
 </div>
 </div>
 </div>
 
 <div class="section">
-<h2>快速接入示例</h2>
+<h2>` + t("docs.examplesH") + `</h2>
 <div class="endpoint">
 <span class="method POST">PY</span>
 <div>
-<div class="path">Python 接入示例</div>
-<div class="example" onclick="copyText(this.textContent)">import requests&#10;BASE = "` + baseURL + `"&#10;TOKEN = "` + token + `"&#10;# 列出所有 profile&#10;r = requests.get(f"{BASE}/api/profiles?token={TOKEN}")&#10;# 启动 agent-1 的 Chrome（运行 30 分钟后自动关闭）&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/start?token={TOKEN}&duration=30")&#10;# 打开百度（必须声明存活时长：3600 秒 = 1 小时，到期自动关闭）&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/tabs/new?token={TOKEN}&url=https://www.baidu.com&close_after=3600")&#10;# 查看标签页&#10;r = requests.get(f"{BASE}/api/profiles/agent-1/tabs?token={TOKEN}")&#10;# 用完手动停止&#10;r = requests.post(f"{BASE}/api/profiles/agent-1/stop?token={TOKEN}")</div>
+<div class="path">` + t("docs.pyTitle") + `</div>
+<div class="example" onclick="copyText(this.textContent)">` + pyExample(baseURL, token) + `</div>
 </div>
 </div>
 </div>
@@ -245,7 +281,8 @@ h1{color:#ff8c00;font-size:24px;margin-bottom:8px}
 </div>
 <div class="toast" id="toast"></div>
 <script>
-function copyText(t){navigator.clipboard.writeText(t.trim()).then(()=>{var e=document.getElementById('toast');e.textContent='已复制';e.className='show';setTimeout(()=>e.className='',1500)})}
+function copyText(t){navigator.clipboard.writeText(t.trim()).then(()=>{var e=document.getElementById('toast');e.textContent='` + t("docs.copied") + `';e.className='show';setTimeout(()=>e.className='',1500)})}
 </script>
-</body></html>`
+</body></html>`)
+	return b.String()
 }

@@ -92,6 +92,7 @@ public class TunnelManager {
 
     public static synchronized void start(Context ctx, String tunnelMode, String key, int port) {
         if (state == State.CONNECTING || state == State.ONLINE) stop();
+        L.load(ctx); // v1.4.0: notification/error strings follow the language pref
         mode = "subdomain".equals(tunnelMode) ? "subdomain" : "temp";
         keyUsed = key == null ? "" : key.trim();
         serverPort = port;
@@ -100,7 +101,7 @@ public class TunnelManager {
         // hard rule: subdomain without key is refused, never silently downgraded to temp
         if (mode.equals("subdomain") && keyUsed.isEmpty()) {
             state = State.ERROR;
-            lastError = "子域名模式需要填入 aitun Key（留空请改选临时代理）";
+            lastError = L.t("tunnel.needKey");
             fire();
             ProfileManager.dispatchLog("[aitun] refused: subdomain mode without key");
             return;
@@ -156,9 +157,9 @@ public class TunnelManager {
                             boolean mismatch = (mode.equals("subdomain") && !looksSubdomain)
                                     || (mode.equals("temp") && !looksTemp);
                             if (mismatch) {
-                                lastError = "服务器返回与所选模式不符（选了"
-                                        + (mode.equals("subdomain") ? "子域名" : "临时代理")
-                                        + "，实际: " + got + "），已停止";
+                                lastError = L.f("tunnel.modeMismatch",
+                                        (mode.equals("subdomain") ? L.t("main.modeSub") : L.t("main.modeTemp")),
+                                        got);
                                 state = State.ERROR;
                                 url = got;
                                 ProfileManager.dispatchLog("[aitun] mode mismatch: " + got);

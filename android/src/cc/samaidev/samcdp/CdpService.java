@@ -46,6 +46,7 @@ public class CdpService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        L.load(this); // v1.4.0: notification + docs-page language
         appCtx = getApplicationContext();
     }
 
@@ -93,7 +94,7 @@ public class CdpService extends Service {
         String lan = "http://" + localIp + ":" + new Prefs(this).port();
         TunnelManager.State st = TunnelManager.state();
         if (st == TunnelManager.State.ONLINE && TunnelManager.url() != null) return TunnelManager.url();
-        if (st == TunnelManager.State.CONNECTING) return "隧道连接中…（上线后显示临时代理/子域名地址）";
+        if (st == TunnelManager.State.CONNECTING) return L.t("main.tunnelConnecting");
         return lan;
     }
 

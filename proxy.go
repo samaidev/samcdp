@@ -158,9 +158,9 @@ func (p *CDPProxy) sweepExpiredTabs() {
 		resp, err := http.Get(targetURL + "/json/close/" + e.id)
 		if err == nil {
 			resp.Body.Close()
-			log.Printf("[tab-janitor] profile %s 标签 %s 已到期自动关闭", e.profile, e.id)
+			log.Printf("[tab-janitor] profile %s tab %s expired, auto-closed", e.profile, e.id)
 		} else {
-			log.Printf("[tab-janitor] profile %s 标签 %s 关闭失败: %v", e.profile, e.id, err)
+			log.Printf("[tab-janitor] profile %s tab %s close failed: %v", e.profile, e.id, err)
 		}
 	}
 }
@@ -470,7 +470,7 @@ func (p *CDPProxy) apiNewTab(w http.ResponseWriter, r *http.Request, name string
 	tabID := str(tab, "id")
 	deadline := time.Now().Add(time.Duration(closeAfter) * time.Second)
 	p.recordTabTTL(name, tabID, deadline)
-	log.Printf("[api] profile %s 打开标签 %s (%s)，%d 秒后自动关闭", name, tabID, tabURL, closeAfter)
+	log.Printf("[api] profile %s opened tab %s (%s), auto-closes in %ds", name, tabID, tabURL, closeAfter)
 	writeJSON(w, 200, map[string]interface{}{
 		"ok":                  true,
 		"tab":                 tab,

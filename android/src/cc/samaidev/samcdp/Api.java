@@ -399,7 +399,7 @@ public class Api extends HttpServer {
         if (TunnelManager.state() == TunnelManager.State.ONLINE) {
             remote = TunnelManager.url();
         } else if (TunnelManager.state() == TunnelManager.State.CONNECTING) {
-            remote = "隧道连接中…（上线后显示临时代理/子域名地址）";
+            remote = L.t("main.tunnelConnecting");
         } else {
             remote = lan;
         }
@@ -407,7 +407,8 @@ public class Api extends HttpServer {
         String exampleBase = TunnelManager.state() == TunnelManager.State.ONLINE
                 ? TunnelManager.url() : lan;
         StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html><html lang=\"zh\"><head><meta charset=\"UTF-8\">");
+        sb.append("<!DOCTYPE html><html lang=").append('"').append(L.lang()).append('"')
+          .append("><head><meta charset=\"UTF-8\">");
         sb.append("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">");
         sb.append("<title>samcdp Android API</title><style>");
         sb.append("body{background:#FFF3E2;color:#4A3B2A;font-family:-apple-system,system-ui,sans-serif;padding:24px;line-height:1.7;max-width:860px;margin:0 auto}");
@@ -417,44 +418,40 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.3.9</h1>");
-        sb.append("<p class=\"muted\">远程 WebView 自动化 · 与桌面版 API 1:1 兼容 · 每 Profile 独立 Cookie 存储池<br>");
-        sb.append("远程地址: <span class=\"u\">").append(remote).append("</span></p>");
-        sb.append("<h2>接口列表</h2><table>");
-        sb.append("<tr><th>方法</th><th>路径</th><th>说明</th></tr>");
-        row(sb, "GET", "/?token=xxx", "本页（API 文档）");
-        row(sb, "GET", "/api/health?token=xxx", "健康检查");
-        row(sb, "GET", "/api/status?token=xxx", "服务器状态（含隧道地址）");
-        row(sb, "GET", "/api/tunnel?token=xxx", "aitun 隧道状态");
-        row(sb, "POST", "/api/tunnel/start?mode=temp&token=xxx", "启动临时代理隧道");
-        row(sb, "POST", "/api/tunnel/start?mode=subdomain&key=ait_xxx&token=xxx", "启动子域名隧道");
-        row(sb, "POST", "/api/tunnel/stop?token=xxx", "停止隧道");
-        row(sb, "GET", "/api/profiles?token=xxx", "列出 Profile");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", "启动（独立进程 Cookie 池）");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", "停止（Cookie 持久化）");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/show?tab=ID&amp;token=xxx", "全屏显示 WebView（人工接管：验证码/登录）");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/switch?tab=ID&amp;token=xxx", "切换该 Profile 显示中的 WebView（前端切换器）");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/hide?token=xxx", "隐藏 WebView（回到无头模式）");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/visible?token=xxx", "WebView 可见状态");
-        row(sb, "GET", "/api/frontend?token=xxx", "多 Profile 前端聚合（全部 tabs + 当前可见项）");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", "列出标签页（含 auto_close_in_s 剩余存活秒数）");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&close_after=SEC&ua=AGENT&token=xxx", "打开标签页（<b>close_after 必填</b>：N 秒后自动关闭）");
-        row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", "关闭标签页");
-        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", "标签页 PNG 截图");
-        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", "执行 JS（body {\"js\":\"...\"}）");
-        row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", "CDP 风格透传");
+        sb.append("<h1>⚙ samcdp Android v1.4.0</h1>");
+        sb.append("<p class=\"muted\">").append(L.t("api.subtitle")).append("<br>");
+        sb.append(L.t("api.remoteAddr")).append(" <span class=\"u\">").append(remote).append("</span></p>");
+        sb.append("<h2>").append(L.t("api.endpoints")).append("</h2><table>");
+        sb.append("<tr><th>").append(L.t("api.thMethod")).append("</th><th>").append(L.t("api.thPath"))
+          .append("</th><th>").append(L.t("api.thDesc")).append("</th></tr>");
+        row(sb, "GET", "/?token=xxx", L.t("api.thisPage"));
+        row(sb, "GET", "/api/health?token=xxx", L.t("api.health"));
+        row(sb, "GET", "/api/status?token=xxx", L.t("api.status"));
+        row(sb, "GET", "/api/tunnel?token=xxx", L.t("api.tunnelStatus"));
+        row(sb, "POST", "/api/tunnel/start?mode=temp&token=xxx", L.t("api.tunnelTemp"));
+        row(sb, "POST", "/api/tunnel/start?mode=subdomain&key=ait_xxx&token=xxx", L.t("api.tunnelSub"));
+        row(sb, "POST", "/api/tunnel/stop?token=xxx", L.t("api.tunnelStop"));
+        row(sb, "GET", "/api/profiles?token=xxx", L.t("api.listProfiles"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/start?token=xxx&duration=MIN", L.t("api.start"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/stop?token=xxx", L.t("api.stop"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/show?tab=ID&amp;token=xxx", L.t("api.show"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/switch?tab=ID&amp;token=xxx", L.t("api.switch"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/hide?token=xxx", L.t("api.hide"));
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/visible?token=xxx", L.t("api.visible"));
+        row(sb, "GET", "/api/frontend?token=xxx", L.t("api.frontend"));
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs?token=xxx", L.t("api.listTabs"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/new?url=URL&close_after=SEC&ua=AGENT&token=xxx", L.t("api.newTab"));
+        row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", L.t("api.closeTab"));
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", L.t("api.screenshot"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", L.t("api.eval"));
+        row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", L.t("api.cdpPassthrough"));
         sb.append("</table>");
-        sb.append("<h2>⚠ close_after 必填（防标签泄漏）</h2>");
-        sb.append("<p>通过 API 打开标签页时<strong>必须</strong>传 <code>close_after=秒数</code>（1..604800，即最长 7 天），"
-                + "到期标签自动销毁、内存立即回收。缺省或非法值会被拒绝（HTTP 400 并返回说明）。"
-                + "示例：<code>close_after=3600</code> = 1 小时，<code>close_after=600</code> = 10 分钟。"
-                + "人在手机 UI 上手动开标签（➕ / 显示WebView / 页面弹窗）默认 1 小时自动关闭，无需手填。"
-                + "标签列表（/tabs）返回 <code>auto_close_in_s</code> 字段可查询剩余存活秒数。</p>");
-        sb.append("<h2>示例</h2>");
+        sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
+        sb.append("<p>").append(L.t("api.caBody")).append("</p>");
+        sb.append("<h2>").append(L.t("api.examples")).append("</h2>");
         sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/start?duration=30&amp;token=&lt;token&gt;\"</code><br><br>");
         sb.append("<code>curl -X POST \"").append(exampleBase).append("/api/profiles/agent-1/tabs/new?url=https://www.baidu.com&amp;close_after=3600&amp;token=&lt;token&gt;\"</code>");
-        sb.append("<p class=\"muted\">鉴权: ?token= 或 Authorization: Bearer · 每 Profile 运行在独立进程，Cookie 完全隔离 · ")
-                .append("SamAI Group</p></body></html>");
+        sb.append("<p class=\"muted\">").append(L.t("api.footer")).append("</p></body></html>");
         return sb.toString();
     }
 
