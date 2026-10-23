@@ -60,8 +60,10 @@ public class ProfileManager {
         for (int i = 0; i < arr.length(); i++) {
             try {
                 JSONObject o = arr.getJSONObject(i);
-                PROFILES.add(new Profile(o.getString("name"), o.optInt("port", 9334 + i),
-                        o.optBoolean("enabled", true)));
+                Profile np = new Profile(o.getString("name"), o.optInt("port", 9334 + i),
+                        o.optBoolean("enabled", true));
+                np.autoStart = o.optBoolean("autoStart", false); // v1.4.1: persisted desired-running flag
+                PROFILES.add(np);
             } catch (Exception ignored) {
             }
         }
@@ -77,6 +79,7 @@ public class ProfileManager {
                 o.put("name", p.name);
                 o.put("port", p.port);
                 o.put("enabled", p.enabled);
+                o.put("autoStart", p.autoStart); // v1.4.1: survive app restarts
                 arr.put(o);
             } catch (Exception ignored) {
             }
@@ -119,11 +122,24 @@ public class ProfileManager {
         if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
         else ctx.startService(i);
         profile.running = true;
+        // v1.4.1: permanent starts (phone switch / duration=0) are remembered and
+        // re-activated on the next app launch. API starts with duration>0 are
+        // deliberately ephemeral and are NOT restored.
+        if (durationMin == 0 && !profile.autoStart) {
+            profile.autoStart = true;
+            saveProfiles();
+        }
         dispatchLog("[" + profile.name + "] starting in isolated runner #" + slot
                 + (durationMin > 0 ? " (auto-stop " + durationMin + "m)" : ""));
     }
 
     public static void stop(Context ctx, Profile profile) {
+        stop(ctx, profile, true);
+    }
+
+    /** v1.4.1: persist=false for bulk teardown (service stop/system destroy) —
+     *  only an EXPLICIT per-profile stop clears its auto-start memory. */
+    private static void stop(Context ctx, Profile profile, boolean persist) {
         if (profile.slot > 0) {
             Intent i = new Intent(ctx, runnerClass(profile.slot))
                     .setAction(BaseRunnerService.ACTION_STOP);
@@ -135,16 +151,120 @@ public class ProfileManager {
         profile.slot = 0;
         profile.running = false;
         profile.autoStopAtMs = 0;
+        if (persist && profile.autoStart) {
+            profile.autoStart = false;
+            saveProfiles();
+        }
         dispatchLog("[" + profile.name + "] stopped");
     }
 
     public static void stopAll(Context ctx) {
         for (Profile p : PROFILES) {
             try {
-                stop(ctx, p);
+                stop(ctx, p, false);
             } catch (Exception ignored) {
             }
         }
+    }
+
+    // ------------------------------------------------------------ v1.4.1 launch auto-restore
+
+    /** Once per MAIN process: restores the profiles that were running before
+     *  the app died, or — when nothing was saved (first launch / everything
+     *  stopped) — activates the first profile by default. */
+    private static final java.util.concurrent.atomic.AtomicBoolean RESTORE_DONE =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    public static void maybeAutoRestore(Context ctx) {
+        if (!RESTORE_DONE.compareAndSet(false, true)) return;
+        final Context app = ctx.getApplicationContext();
+        // background thread: the survivor scan does up to 6 localhost HTTP probes
+        new Thread(() -> autoRestore(app), "samcdp-restore").start();
+    }
+
+    private static void autoRestore(Context app) {
+        try {
+            // give START_STICKY restarts / surviving runners a moment to settle
+            Thread.sleep(1200);
+        } catch (InterruptedException e) {
+            return;
+        }
+        try {
+            List<Profile> list = profiles();
+            java.util.LinkedHashMap<String, Integer> alive = scanAliveRunners();
+            boolean anyDesired = false;
+            StringBuilder started = new StringBuilder();
+            for (Profile p : list) {
+                if (!p.autoStart || !p.enabled) continue;
+                anyDesired = true;
+                Integer slot = alive.remove(p.name);
+                if (slot != null) {
+                    // main process died but the :cdpN runner survived — just adopt it
+                    p.slot = slot;
+                    p.running = true;
+                    p.startedAtMs = System.currentTimeMillis();
+                    dispatchLog("[" + p.name + "] restored: re-attached to surviving runner #" + slot);
+                    continue;
+                }
+                try {
+                    start(app, p, 0);
+                    started.append(' ').append(p.name);
+                } catch (Exception e) {
+                    dispatchLog("[" + p.name + "] auto-restore failed: " + e.getMessage());
+                }
+            }
+            // runners still alive for profiles that should NOT run — shut them down
+            for (java.util.Map.Entry<String, Integer> e : alive.entrySet()) {
+                Profile known = find(e.getKey());
+                if (known != null && (known.running || known.slot > 0)) continue;
+                dispatchLog("[restore] stopping orphan runner #" + e.getValue() + " (" + e.getKey() + ")");
+                try {
+                    app.startService(new Intent(app, runnerClass(e.getValue()))
+                            .setAction(BaseRunnerService.ACTION_STOP));
+                } catch (Exception ignored) {
+                }
+            }
+            if (!anyDesired && !list.isEmpty()) {
+                Profile first = list.get(0);
+                dispatchLog("[restore] no saved active profiles — auto-starting " + first.name);
+                try {
+                    start(app, first, 0);
+                } catch (Exception e) {
+                    dispatchLog("[" + first.name + "] auto-start failed: " + e.getMessage());
+                }
+            } else if (started.length() > 0) {
+                dispatchLog("[restore] auto-started:" + started);
+            }
+        } catch (Exception e) {
+            dispatchLog("[restore] failed: " + e.getMessage());
+        }
+    }
+
+    /** slot -> profile name of every runner tab-API that answers on 127.0.0.1:9401..9406. */
+    private static java.util.LinkedHashMap<String, Integer> scanAliveRunners() {
+        java.util.LinkedHashMap<String, Integer> alive = new java.util.LinkedHashMap<>();
+        for (int slot = 1; slot <= MAX_PROFILES; slot++) {
+            try {
+                HttpURLConnection c = (HttpURLConnection) new URL("http://127.0.0.1:" + (9400 + slot) + "/info")
+                        .openConnection();
+                c.setConnectTimeout(500);
+                c.setReadTimeout(1500);
+                int code = c.getResponseCode();
+                java.io.InputStream in = code >= 400 ? c.getErrorStream() : c.getInputStream();
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[2048];
+                int n;
+                while (in != null && (n = in.read(buf)) != -1) bos.write(buf, 0, n);
+                if (in != null) in.close();
+                c.disconnect();
+                if (code == 200) {
+                    String name = new JSONObject(bos.toString("UTF-8")).optString("profile", "");
+                    if (!name.isEmpty()) alive.put(name, slot);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return alive;
     }
 
     // ------------------------------------------------------------ proxy to runner tab API

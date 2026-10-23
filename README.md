@@ -139,6 +139,7 @@ print(resp.json())
 
 - **aitun tunnel built-in, dual mode** — 临时代理 (free auto-assigned URL, 24h) or 子域名 (registered subdomain with your `ait_` key). The tunnel client (`libaitunclient.so`, same one SamDocker uses) is bundled and executed from `nativeLibraryDir`; the app resolves `aitun.cc` via the Android resolver and passes `-s IP:6639` since Go static binaries can't read Android DNS
 - **True multi-cookie-jar profiles** — each started profile runs in its OWN Android process (`:cdp1`…`:cdp6`) with its own WebView data directory suffix, so cookie jars are fully isolated per profile; cookies persist to per-profile storage on stop and are restored on start
+- **Restart memory (v1.4.1)** — profiles started from the phone switch (or `duration=0`) are saved as auto-start and ALL of them are re-activated automatically the next time the app opens; with nothing saved (first launch), the first profile is activated by default; API starts with `duration>0` stay temporary and are not restored; orphan runner processes from a previous session are detected and cleaned up
 - **Desktop-parity settings UI** — same warm cream/orange design and sections as the desktop settings page; desktop logo (orange C) as launcher icon
 - **Battery optimization button** (samdocker style) — request the system to exempt the app from Doze so the tunnel/service survives in background
 - **Remote profile management** — `POST /api/profiles/add?name=x`, `DELETE /api/profiles/<name>`

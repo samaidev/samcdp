@@ -148,6 +148,8 @@ public final class L {
         put("api.listProfiles", "List profiles", "列出 Profile");
         put("api.start", "Start (isolated-process cookie pool)", "启动（独立进程 Cookie 池）");
         put("api.stop", "Stop (cookies persisted)", "停止（Cookie 持久化）");
+        put("api.autoStartNote", "<b>Restart memory (v1.4.1):</b> a profile started from the phone switch (or duration=0) is remembered as auto-start and ALL such profiles are re-activated automatically the next time the app opens; if none was saved, the first profile auto-starts by default. API starts with <code>duration&gt;0</code> are temporary and are NOT restored. Orphan runner processes from a previous session are detected and cleaned up. The desktop app has always started all enabled profiles at launch.",
+                "<b>重启记忆（v1.4.1）：</b>通过手机开关启动的 Profile（或 duration=0）会记为自启动，下次打开 App 时<b>全部自动恢复</b>；若没有已保存的 Profile，则默认自动激活第一个。API 以 <code>duration&gt;0</code> 启动的 Profile 是临时的，不会被恢复。上一会话遗留的孤儿 runner 进程会被探测并清理。桌面版启动时始终自动启动全部启用的 Profile。");
         put("api.show", "Show WebView fullscreen (human takeover: CAPTCHA/login)", "全屏显示 WebView（人工接管：验证码/登录）");
         put("api.switch", "Switch this profile's visible WebView (frontend switcher)", "切换该 Profile 显示中的 WebView（前端切换器）");
         put("api.hide", "Hide WebView (back to headless)", "隐藏 WebView（回到无头模式）");

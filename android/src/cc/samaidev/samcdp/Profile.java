@@ -8,6 +8,11 @@ public class Profile {
     public int port;
     public boolean enabled;
 
+    /** v1.4.1: persisted desired-running flag. Set when a profile is started
+     *  permanently (phone switch / duration=0); the app re-activates every
+     *  autoStart profile on the next launch so users never re-tap switches. */
+    public volatile boolean autoStart = false;
+
     public volatile boolean running = false;
     public volatile int slot = 0;          // runner process slot 1..6, 0 = stopped
     public volatile long startedAtMs = 0;
@@ -26,6 +31,7 @@ public class Profile {
             o.put("name", name);
             o.put("port", port);
             o.put("enabled", enabled);
+            o.put("auto_start", autoStart);
             o.put("running", running);
             o.put("slot", slot);
             o.put("tabs", tabsCount);

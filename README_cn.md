@@ -138,6 +138,7 @@ print(resp.json())
 
 - **内置 aitun 隧道，双模式** — 临时代理（免费自动分配 URL，24h）/ 子域名（绑定 `ait_` Key 的固定域名）。隧道客户端（`libaitunclient.so`，与 SamDocker 同款）打包在 APK 内并从 `nativeLibraryDir` 执行；因 Go 静态二进制读不到安卓 DNS，App 会先用系统解析器解析 `aitun.cc` 再以 `-s IP:6639` 直连
 - **真·多 Cookie 存储池** — 每个 Profile 运行在独立安卓进程（`:cdp1`…`:cdp6`），拥有独立 WebView 数据目录后缀，Cookie 完全隔离；停止时快照到独立存储、启动时恢复
+- **重启记忆（v1.4.1）** — 通过手机开关启动的 Profile（或 `duration=0`）会记为自启动，下次打开 App 时全部自动恢复；没有任何已保存记录时（首次启动）默认自动激活第一个 Profile；API 以 `duration>0` 启动的 Profile 仍是临时的、不会被恢复；上一会话遗留的孤儿 runner 进程会被探测并清理
 - **桌面级设置界面** — 与桌面设置页相同的暖橙奶油配色与分区；桌面端 Logo（橙色 C）作为启动图标
 - **电池优化按钮**（参考 SamDocker）— 申请忽略电池优化，保证后台隧道/服务存活
 - **远程 Profile 管理** — `POST /api/profiles/add?name=x`、`DELETE /api/profiles/<name>`

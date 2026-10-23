@@ -110,6 +110,9 @@ public class CdpService extends Service {
             TunnelManager.addListener(() -> runOnUiThreadToastFix());
             ProfileManager.dispatchLog("server listening on " + notificationText()
                     + "  (token " + prefs.token() + ")");
+            // v1.4.1: restore previously-active profiles (or default-activate the
+            // first one) — once per main process, right after the server is up
+            ProfileManager.maybeAutoRestore(this);
         } catch (Exception e) {
             ProfileManager.dispatchLog("server start FAILED: " + e.getMessage());
             stopSelf();

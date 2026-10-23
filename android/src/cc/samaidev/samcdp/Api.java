@@ -418,7 +418,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.4.0</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.4.1</h1>");
         sb.append("<p class=\"muted\">").append(L.t("api.subtitle")).append("<br>");
         sb.append(L.t("api.remoteAddr")).append(" <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>").append(L.t("api.endpoints")).append("</h2><table>");
@@ -446,6 +446,7 @@ public class Api extends HttpServer {
         row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", L.t("api.eval"));
         row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", L.t("api.cdpPassthrough"));
         sb.append("</table>");
+        sb.append("<p class=\"muted\">").append(L.t("api.autoStartNote")).append("</p>");
         sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.caBody")).append("</p>");
         sb.append("<h2>").append(L.t("api.examples")).append("</h2>");
