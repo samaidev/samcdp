@@ -246,6 +246,95 @@ public final class Downloads {
 
     // ------------------------------------------------------------ add / persist
 
+    /**
+     * v1.4.4: store an externally-uploaded file (POST /downloads/upload, raw body)
+     * into THIS process's downloads registry. Runs in the profile's runner process
+     * when the profile is running (main API proxies the bytes here). Raw request
+     * body = file bytes; ?name= is the file name (defaults to upload.bin).
+     */
+    public static String saveUploaded(byte[] data, String name) {
+        try {
+            if (data == null || data.length == 0)
+                return "{\"ok\":false,\"error\":\"empty body - send the raw file bytes as the request body\"}";
+            if (dir == null)
+                return "{\"ok\":false,\"error\":\"downloads not initialized (profile not running?)\"}";
+            Entry e = newEntry(name, "", "external-upload");
+            e.state = "done";
+            e.size = data.length;
+            e.got = data.length;
+            try (OutputStream os = new FileOutputStream(fileFor(e))) {
+                os.write(data);
+            }
+            put(e);
+            ProfileManager.dispatchLog("[downloads] uploaded from outside: " + e.name
+                    + " (" + data.length + "B)");
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            o.put("download", e.toJson());
+            return o.toString();
+        } catch (Exception ex) {
+            return "{\"ok\":false,\"error\":\"upload save failed: " + ex.getMessage() + "\"}";
+        }
+    }
+
+    /**
+     * v1.4.4: disk-direct variant for STOPPED profiles — the main process writes
+     * the file and appends the entry to meta.json itself. Safe: the runner process
+     * is gone, so there is no other meta.json writer to race with. Same layout the
+     * runner's Downloads instance produces, so list/pull/attach/provider all work
+     * unchanged after the profile starts again (loadMeta picks the entry up).
+     */
+    public static String saveUploadedToDisk(Context ctx, int slotNum, String profile,
+                                            byte[] data, String name) {
+        try {
+            if (data == null || data.length == 0)
+                return "{\"ok\":false,\"error\":\"empty body - send the raw file bytes as the request body\"}";
+            File sdir = new File(rootDir(ctx), "slot" + slotNum);
+            if (!sdir.exists()) sdir.mkdirs();
+            List<Entry> entries = new ArrayList<>();
+            File meta = new File(sdir, "meta.json");
+            if (meta.isFile()) {
+                try {
+                    JSONArray raw = new JSONArray(readAll(meta));
+                    for (int i = 0; i < raw.length(); i++)
+                        entries.add(Entry.fromJson(raw.getJSONObject(i)));
+                } catch (Exception ignored) {
+                }
+            }
+            Entry e = new Entry();
+            e.id = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+            e.name = sanitize(name);
+            e.mime = mimeForName(e.name);
+            e.url = "external-upload";
+            e.state = "done";
+            e.ts = System.currentTimeMillis();
+            e.profile = profile;
+            e.size = data.length;
+            e.got = data.length;
+            e.path = new File(sdir, e.id + "-" + e.name).getAbsolutePath();
+            try (OutputStream os = new FileOutputStream(e.path)) {
+                os.write(data);
+            }
+            entries.add(e);
+            JSONArray arr = new JSONArray();
+            for (Entry x : entries) arr.put(x.toJson());
+            File tmp = new File(sdir, "meta.json.tmp");
+            try (OutputStream os = new FileOutputStream(tmp)) {
+                os.write(arr.toString().getBytes(StandardCharsets.UTF_8));
+            }
+            if (meta.exists()) meta.delete();
+            tmp.renameTo(meta);
+            JSONObject o = new JSONObject();
+            o.put("ok", true);
+            JSONObject d = e.toJson();
+            d.remove("path");
+            o.put("download", d);
+            return o.toString();
+        } catch (Exception ex) {
+            return "{\"ok\":false,\"error\":\"upload save failed: " + ex.getMessage() + "\"}";
+        }
+    }
+
     private static Entry newEntry(String name, String mime, String url) {
         Entry e = new Entry();
         e.id = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);

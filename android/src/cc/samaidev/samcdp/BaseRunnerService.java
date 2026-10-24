@@ -239,6 +239,10 @@ public abstract class BaseRunnerService extends Service {
 
             if (path.equals("/downloads") && method.equals("GET")) {
                 payload = Downloads.listJson().getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/downloads/upload") && method.equals("POST")) {
+                // v1.4.4: external file push (main API proxy) — raw body = file bytes
+                payload = Downloads.saveUploaded(body,
+                        query.getOrDefault("name", "upload.bin")).getBytes(StandardCharsets.UTF_8);
             } else if (seg.length == 4 && seg[1].equals("downloads") && seg[3].equals("upload")
                     && method.equals("POST")) {
                 // v1.4.2: hand a downloaded file to a page's <input type=file>

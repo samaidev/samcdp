@@ -412,6 +412,11 @@ public class ProfileManager {
         return proxy(p, "POST", q, null);
     }
 
+    /** v1.4.4: push a raw file INTO a running profile's downloads store. */
+    public static ProxyResult downloadUploadFile(Profile p, String name, byte[] data) {
+        return proxy(p, "POST", "/downloads/upload?name=" + urlencode(name), data);
+    }
+
     public static String urlencode(String s) {
         try {
             return java.net.URLEncoder.encode(s, "UTF-8");

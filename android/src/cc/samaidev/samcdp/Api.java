@@ -86,7 +86,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.4.3");
+            o.put("version", "1.4.4");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -94,7 +94,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.4.3");
+            o.put("version", "1.4.4");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -157,6 +157,34 @@ public class Api extends HttpServer {
             }
             o.put("profiles", arr);
             return json(200, o);
+        }
+
+        // v1.4.4: push a file INTO a profile's downloads store from outside (PC,
+        // agent, curl through LAN or the aitun tunnel). Raw body = file bytes;
+        // ?name= is the file name; ?profile= picks the target (default: first
+        // running profile, else the first profile). Running profiles get the
+        // bytes proxied to their runner (in-memory registry + meta.json);
+        // stopped profiles are written to disk directly (no meta.json writer).
+        if (path.equals("/api/downloads/upload") && req.method.equals("POST")) {
+            String want = req.query.get("profile");
+            String name = req.query.get("name");
+            if (name == null || name.trim().isEmpty()) name = "upload.bin";
+            Profile target = null;
+            if (want != null && !want.isEmpty()) {
+                for (Profile p : ProfileManager.profiles()) if (p.name.equals(want)) { target = p; break; }
+                if (target == null) return err(404, "profile not found: " + want);
+            } else {
+                for (Profile p : ProfileManager.profiles()) { if (p.running) { target = p; break; } }
+                if (target == null && !ProfileManager.profiles().isEmpty()) target = ProfileManager.profiles().get(0);
+            }
+            if (target == null) return err(404, "no profiles configured");
+            if (req.body == null || req.body.length == 0)
+                return err(400, "empty body - send the raw file bytes as the request body (Content-Type: application/octet-stream)");
+            if (target.running) {
+                return toResp(ProfileManager.downloadUploadFile(target, name, req.body));
+            }
+            return json(200, new JSONObject(Downloads.saveUploadedToDisk(
+                    CdpService.appContext(), target.slot, target.name, req.body, name)));
         }
 
         // Aggregated multi-profile frontend state: every running profile's tabs +
@@ -410,9 +438,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.4.3");
+                    o.put("Browser", "samcdp-webview/1.4.4");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.4.3 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.4.4 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -482,7 +510,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.4.3</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.4.4</h1>");
         sb.append("<p class=\"muted\">").append(L.t("api.subtitle")).append("<br>");
         sb.append(L.t("api.remoteAddr")).append(" <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>").append(L.t("api.endpoints")).append("</h2><table>");
@@ -513,11 +541,32 @@ public class Api extends HttpServer {
         row(sb, "GET", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;/file?token=xxx", L.t("api.dlFile"));
         row(sb, "DELETE", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;?token=xxx", L.t("api.dlDelete"));
         row(sb, "POST", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;/upload?tab=ID&amp;selector=CSS&amp;token=xxx", L.t("api.dlUpload"));
+        row(sb, "POST", "/api/downloads/upload?name=file.bin&amp;profile=name&amp;token=xxx", L.t("api.dlRowUp"));
         row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", L.t("api.cdpPassthrough"));
         sb.append("</table>");
         sb.append("<p class=\"muted\">").append(L.t("api.autoStartNote")).append("</p>");
         sb.append("<h2>").append(L.t("api.dlTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.dlBody")).append("</p>");
+        // v1.4.4: upload form — pushes files from THIS browser (PC via LAN/tunnel,
+        // or the phone itself) into a profile's downloads store. Relative URL so
+        // it works both directly on :9334 and through the aitun tunnel prefix.
+        sb.append("<h3>").append(L.t("api.ulTitle")).append("</h3>");
+        sb.append("<p>").append(L.t("api.ulBody")).append("</p>");
+        sb.append("<p><input type=file id=ulp multiple> <button type=button onclick=\"ulGo()\">")
+          .append(L.t("api.ulBtn")).append("</button></p>");
+        sb.append("<pre id=ulr style=\"white-space:pre-wrap;background:#FFFCF3;border:1px solid #EFD9AE;padding:8px;font-size:12px;min-height:18px\"> </pre>");
+        sb.append("<script>function ulGo(){var fs=document.getElementById('ulp').files;"
+                + "var tk=new URLSearchParams(location.search).get('token')||'';"
+                + "var out=[];var ch=Promise.resolve();"
+                + "for(var i=0;i<fs.length;i++){(function(f){ch=ch.then(function(){"
+                + "return fetch('api/downloads/upload?name='+encodeURIComponent(f.name)+'&token='+encodeURIComponent(tk),"
+                + "{method:'POST',body:f,headers:{'Content-Type':'application/octet-stream'}})"
+                + ".then(function(r){return r.json()})"
+                + ".then(function(j){out.push(f.name+' -> '+(j.ok?('ok id='+j.download.id+' ('+j.download.size+'B)'):('ERR '+(j.error||'http '+r.status))))})"
+                + ".catch(function(e){out.push(f.name+' -> NET ERR '+e)});});})(fs[i]);}"
+                + "ch.then(function(){var el=document.getElementById('ulr');"
+                + "el.textContent=out.length?out.join('\\n'):'no file selected';});}"
+                + "</script>");
         sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.caBody")).append("</p>");
         sb.append("<h2>").append(L.t("api.examples")).append("</h2>");
