@@ -86,7 +86,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.4.4");
+            o.put("version", "1.4.5");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -94,7 +94,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.4.4");
+            o.put("version", "1.4.5");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -438,9 +438,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.4.4");
+                    o.put("Browser", "samcdp-webview/1.4.5");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.4.4 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.4.5 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -510,7 +510,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.4.4</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.4.5</h1>");
         sb.append("<p class=\"muted\">").append(L.t("api.subtitle")).append("<br>");
         sb.append(L.t("api.remoteAddr")).append(" <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>").append(L.t("api.endpoints")).append("</h2><table>");
@@ -554,20 +554,29 @@ public class Api extends HttpServer {
         sb.append("<p>").append(L.t("api.ulBody")).append("</p>");
         sb.append("<p><input type=file id=ulp multiple> <button type=button onclick=\"ulGo()\">")
           .append(L.t("api.ulBtn")).append("</button></p>");
+        // v1.4.5: live per-file status — picking a file auto-uploads immediately and the
+        // result area shows ↑ uploading / ✓ ok / ✗ failed lines as they happen, so a user
+        // can always tell whether the transfer really ran (works over LAN and tunnel).
         sb.append("<pre id=ulr style=\"white-space:pre-wrap;background:#FFFCF3;border:1px solid #EFD9AE;padding:8px;font-size:12px;min-height:18px\"> </pre>");
-        sb.append("<script>function ulGo(){var fs=document.getElementById('ulp').files;"
+        sb.append("<script>"
+                + "function ulR(out){document.getElementById('ulr').textContent=out.join('\\n');}"
+                + "function ulGo(){var fs=document.getElementById('ulp').files;"
                 + "var tk=new URLSearchParams(location.search).get('token')||'';"
-                + "var out=[];var ch=Promise.resolve();"
-                + "for(var i=0;i<fs.length;i++){(function(f){ch=ch.then(function(){"
+                + "var out=[];var el=document.getElementById('ulr');"
+                + "if(!fs.length){el.textContent='no file selected \\u2014 pick a file first';return;}"
+                + "var ch=Promise.resolve();var okCnt=0;"
+                + "for(var i=0;i<fs.length;i++){(function(f,i){ch=ch.then(function(){"
+                + "out[i]='\\u2191 '+f.name+' ('+f.size+'B) uploading...';ulR(out);"
                 + "return fetch('api/downloads/upload?name='+encodeURIComponent(f.name)+'&token='+encodeURIComponent(tk),"
                 + "{method:'POST',body:f,headers:{'Content-Type':'application/octet-stream'}})"
                 + ".then(function(r){return r.json()})"
-                + ".then(function(j){out.push(f.name+' -> '+(j.ok?('ok id='+j.download.id+' ('+j.download.size+'B)'):('ERR '+(j.error||'http '+r.status))))})"
-                + ".catch(function(e){out.push(f.name+' -> NET ERR '+e)});});})(fs[i]);}"
-                + "ch.then(function(){var el=document.getElementById('ulr');"
-                + "el.textContent=out.length?out.join('\\n'):'no file selected';});}"
+                + ".then(function(j){if(j.ok){okCnt++;out[i]='\\u2713 '+f.name+' uploaded -> id='+j.download.id+' ('+j.download.size+'B)';}"
+                + "else{out[i]='\\u2717 '+f.name+' FAILED: '+(j.error||('http '+r.status))+' \\u2014 press Upload to retry';}ulR(out);})"
+                + ".catch(function(e){out[i]='\\u2717 '+f.name+' FAILED: '+e+' \\u2014 press Upload to retry';ulR(out);});});})(fs[i],i);}"
+                + "ch.then(function(){if(okCnt===fs.length){document.getElementById('ulp').value='';out.push('\\u2014 all done \\u2014');}ulR(out);});}"
                 + "document.getElementById('ulp').addEventListener('change',function(){"
-                + "var fs=this.files;if(fs.length){document.getElementById('ulr').textContent='uploading '+fs.length+' file(s)...';ulGo();}});"
+                + "var fs=this.files;if(!fs.length)return;"
+                + "document.getElementById('ulr').textContent='picked '+fs[0].name+(fs.length>1?(' +'+(fs.length-1)+' more'):'')+' ('+fs[0].size+'B) \\u2014 uploading...';ulGo();});"
                 + "</script>");
         sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.caBody")).append("</p>");
