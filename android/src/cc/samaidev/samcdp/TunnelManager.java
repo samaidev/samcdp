@@ -112,11 +112,34 @@ public class TunnelManager {
         String bin = new File(ctx.getApplicationInfo().nativeLibraryDir, "libaitunclient.so")
                 .getAbsolutePath();
         File home = new File(ctx.getFilesDir(), "aitun-home");
-        // fresh HOME per start so each temp tunnel gets a fresh identity
-        try {
-            deleteR(home);
+        // v1.4.2: the temp proxy address stays valid server-side for 24h. Keep the persisted
+        // auth_token while it is young enough (<23h safety margin) so the client re-binds to the
+        // SAME address on every start ("Reusing persisted auth_token for stable tunnel URL").
+        // Fresh identity only when the token is expired or absent. Self-heal: if a reused token
+        // fails to establish, the IO thread clears it and the retry loop continues with a fresh one.
+        final java.util.concurrent.atomic.AtomicBoolean reuse = new java.util.concurrent.atomic.AtomicBoolean(false);
+        File tokenFile = new File(home, ".aitun/auth_token");
+        if (mode.equals("temp")) {
+            long ageMs = System.currentTimeMillis() - tokenFile.lastModified();
+            if (tokenFile.exists() && ageMs >= 0 && ageMs < 23L * 3600L * 1000L) {
+                reuse.set(true);
+                ProfileManager.dispatchLog(String.format(
+                        "[aitun] keeping auth_token (age %.1fh < 23h) — stable temp URL", ageMs / 3600000.0));
+            } else {
+                try {
+                    deleteR(home);
+                } catch (Exception ignored) {
+                }
+                home.mkdirs();
+                ProfileManager.dispatchLog("[aitun] no valid persisted token — fresh temp identity");
+            }
+        } else {
+            // subdomain mode: the key defines the URL, fresh HOME as before
+            try {
+                deleteR(home);
+            } catch (Exception ignored) {
+            }
             home.mkdirs();
-        } catch (Exception ignored) {
         }
 
         String[] cmd = mode.equals("subdomain")
@@ -136,6 +159,7 @@ public class TunnelManager {
             int consecutiveErrors = 0;
             boolean everOnline = false;
             for (int attempt = 1; attempt <= 4; attempt++) {
+                boolean retryFresh = false;
                 try {
                     ProcessBuilder pb = new ProcessBuilder(finalCmd);
                     pb.environment().put("HOME", home.getAbsolutePath());
@@ -157,12 +181,25 @@ public class TunnelManager {
                             boolean mismatch = (mode.equals("subdomain") && !looksSubdomain)
                                     || (mode.equals("temp") && !looksTemp);
                             if (mismatch) {
+                                ProfileManager.dispatchLog("[aitun] mode mismatch: " + got);
+                                if (mode.equals("temp") && reuse.get() && attempt < 4) {
+                                    // v1.4.2 self-heal: reused token pointed elsewhere — drop it,
+                                    // retry with a fresh identity instead of failing hard
+                                    retryFresh = true;
+                                    clearToken(home);
+                                    reuse.set(false);
+                                    lastError = null;
+                                    state = State.CONNECTING;
+                                    fire();
+                                    Process pp = process;
+                                    if (pp != null) pp.destroy();
+                                    break; // retry outer loop
+                                }
                                 lastError = L.f("tunnel.modeMismatch",
                                         (mode.equals("subdomain") ? L.t("main.modeSub") : L.t("main.modeTemp")),
                                         got);
                                 state = State.ERROR;
                                 url = got;
-                                ProfileManager.dispatchLog("[aitun] mode mismatch: " + got);
                                 fire();
                                 Process pp = process;
                                 if (pp != null) pp.destroy();
@@ -184,6 +221,14 @@ public class TunnelManager {
                             if (!everOnline && consecutiveErrors >= 3) {
                                 ProfileManager.dispatchLog("[aitun] giving up after "
                                         + consecutiveErrors + " consecutive errors");
+                                if (reuse.get()) {
+                                    // v1.4.2 self-heal: a token-based run that never came online
+                                    // most likely held a stale token — clear it so the next
+                                    // start gets a fresh working address instead of failing again
+                                    clearToken(home);
+                                    reuse.set(false);
+                                    ProfileManager.dispatchLog("[aitun] cleared reused token for fresh retry next start");
+                                }
                                 state = State.ERROR;
                                 fire();
                                 Process pp = process;
@@ -206,6 +251,22 @@ public class TunnelManager {
                     int code = p.waitFor();
                     process = null;
                     if (state == State.STOPPED) return;   // stopped by user
+                    if (retryFresh && attempt < 4) {
+                        Thread.sleep(2500);
+                        continue;
+                    }
+                    // v1.4.2 self-heal: a reused token that established nothing is stale —
+                    // clear it so the next attempt runs with a fresh identity
+                    boolean transientLocal = lastError != null
+                            && lastError.contains("local service not available");
+                    if (!retryFresh && !transientLocal && state != State.ONLINE
+                            && reuse.get() && attempt < 4) {
+                        ProfileManager.dispatchLog("[aitun] reused token produced no tunnel — clearing for fresh retry");
+                        clearToken(home);
+                        reuse.set(false);
+                        Thread.sleep(2500);
+                        continue;
+                    }
                     if (attempt < 4 && code != 0) {
                         Thread.sleep(2500);
                         continue;
@@ -314,6 +375,15 @@ public class TunnelManager {
             ProfileManager.dispatchLog("[aitun] DoH failed: " + e.getMessage());
         }
         return null;
+    }
+
+    /** v1.4.2: drop the persisted aitun identity so the next start allocates a fresh address. */
+    private static void clearToken(File home) {
+        try {
+            new File(home, ".aitun/auth_token").delete();
+            new File(home, ".aitun/client_id").delete();
+        } catch (Exception ignored) {
+        }
     }
 
     private static void deleteR(File f) {

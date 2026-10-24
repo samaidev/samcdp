@@ -238,6 +238,25 @@ public class TabActivity extends Activity {
         rlp.rightMargin = Math.round(8 * den);
         row2.addView(refreshBtn, rlp);
 
+        // ⬇: downloaded files list (v1.4.2) — tap title to open, 🗑 to delete
+        TextView dlBtn = new TextView(this);
+        dlBtn.setTextSize(12);
+        dlBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        dlBtn.setTextColor(0xFFFFFFFF);
+        dlBtn.setSingleLine(true);
+        dlBtn.setGravity(Gravity.CENTER);
+        dlBtn.setPadding(padH, padV, padH, padV);
+        GradientDrawable dbg = new GradientDrawable();
+        dbg.setColor(0xAA000000);
+        dbg.setCornerRadius(20 * den);
+        dlBtn.setBackground(dbg);
+        dlBtn.setText("⬇");
+        dlBtn.setOnClickListener(v -> openDownloads());
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dlp.rightMargin = Math.round(8 * den);
+        row2.addView(dlBtn, dlp);
+
         // ✕: detach the WebView straight back to headless
         TextView hideBtn = new TextView(this);
         hideBtn.setTextSize(12);
@@ -339,6 +358,132 @@ public class TabActivity extends Activity {
         TabEngine.setPageUrlListener(null);
         TabEngine.detach();
         super.onDestroy();
+    }
+
+    // ------------------------------------------------------------------ downloads (v1.4.2)
+
+    /** List this profile's downloaded files: tap a row to open the file with an
+     *  external app (content:// via DownloadsProvider), 🗑 deletes it. */
+    private void openDownloads() {
+        org.json.JSONArray arr = new org.json.JSONArray();
+        try {
+            arr = new JSONObject(Downloads.listJson()).optJSONArray("downloads");
+            if (arr == null) arr = new org.json.JSONArray();
+        } catch (Exception ignored) {
+        }
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        int pad = Math.round(16 * den());
+        box.setPadding(pad, Math.round(8 * den()), pad, pad);
+
+        if (arr.length() == 0) {
+            TextView empty = new TextView(this);
+            empty.setText(L.t("dl.none"));
+            empty.setTextColor(0xFF999999);
+            empty.setTextSize(13);
+            empty.setPadding(0, Math.round(12 * den()), 0, Math.round(12 * den()));
+            box.addView(empty);
+        }
+        for (int i = 0; i < arr.length(); i++) {
+            JSONObject e = arr.optJSONObject(i);
+            if (e == null) continue;
+            box.addView(dlRow(e));
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(L.f("dl.title", arr.length()))
+                .setView(box)
+                .setPositiveButton(L.t("tab.close"), null)
+                .show();
+    }
+
+    /** One downloads-list row: [name + meta (tap = open)] [🗑] */
+    private LinearLayout dlRow(JSONObject e) {
+        String id = e.optString("id");
+        String name = e.optString("name", "file");
+        String state = e.optString("state", "done");
+        String meta;
+        if ("running".equals(state)) {
+            meta = L.f("dl.stateRunning", humanSize(e.optLong("size")));
+        } else if ("error".equals(state)) {
+            meta = L.f("dl.stateError", e.optString("error", ""));
+        } else {
+            meta = humanSize(e.optLong("size"));
+        }
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, Math.round(10 * den()), 0, Math.round(10 * den()));
+
+        TextView title = new TextView(this);
+        title.setTextSize(13);
+        title.setTextColor(0xFFEEEEEE);
+        title.setSingleLine(false);
+        title.setMaxLines(2);
+        title.setText(name + "\n" + meta);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tp.rightMargin = Math.round(12 * den());
+        row.addView(title, tp);
+
+        TextView del = new TextView(this);
+        del.setTextSize(15);
+        del.setTypeface(Typeface.DEFAULT_BOLD);
+        del.setTextColor(0xFFFF6B4A);
+        del.setPadding(Math.round(10 * den()), 0, Math.round(4 * den()), 0);
+        del.setText("🗑");
+        del.setOnClickListener(v -> {
+            String r = Downloads.delete(id);
+            Toast2(r != null && r.contains("\"ok\":true") ? L.t("dl.deleted") : L.t("dl.delFail"));
+            // close & reopen the dialog: simplest reliable refresh
+            try {
+                android.view.ViewParent vp = v.getParent();
+                while (vp != null && !(vp instanceof android.app.Dialog)) {
+                    android.view.View pv = (android.view.View) vp;
+                    vp = pv.getParent();
+                }
+                if (vp instanceof android.app.Dialog) ((android.app.Dialog) vp).dismiss();
+            } catch (Exception ignored) {
+            }
+            openDownloads();
+        });
+        row.addView(del);
+
+        title.setOnClickListener(v -> openEntry(e));
+        return row;
+    }
+
+    /** Open a downloaded file with an external app via DownloadsProvider. */
+    private void openEntry(JSONObject e) {
+        try {
+            Downloads.Entry entry = Downloads.find(e.optString("id"));
+            if (entry == null) {
+                Toast2(L.t("dl.delFail"));
+                return;
+            }
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(Downloads.contentUri(entry),
+                    entry.mime == null || entry.mime.isEmpty()
+                            ? "application/octet-stream" : entry.mime.split(";")[0].trim());
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(i);
+        } catch (Exception ex) {
+            Toast2(L.t("dl.openFail"));
+        }
+    }
+
+    private static String humanSize(long b) {
+        if (b <= 0) return "0 B";
+        if (b < 1024) return b + " B";
+        if (b < 1048576) return String.format("%.1f KB", b / 1024.0);
+        if (b < 1073741824) return String.format("%.1f MB", b / 1048576.0);
+        return String.format("%.2f GB", b / 1073741824.0);
+    }
+
+    private float den() {
+        return getResources().getDisplayMetrics().density;
     }
 
     // ------------------------------------------------------------------ switcher

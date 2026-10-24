@@ -172,9 +172,15 @@ print(resp.json())
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | 标签页 PNG 截图 |
 | `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | 在标签页内执行 JS |
 | `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP 风格透传 |
+| `GET` | `/api/downloads?token=xxx` | 全部 Profile 的下载文件（运行中实时代理，未运行读磁盘） |
+| `GET` | `/api/profiles/<name>/downloads?token=xxx` | 列出该 Profile 的 WebView 下载文件 |
+| `GET` | `/api/profiles/<name>/downloads/<id>/file?token=xxx` | 拉取已下载文件（原始字节） |
+| `DELETE` | `/api/profiles/<name>/downloads/<id>?token=xxx` | 删除已下载文件 |
+| `POST` | `/api/profiles/<name>/downloads/<id>/upload?tab=ID&selector=CSS&token=xxx` | 把已下载文件交给网页的 `<input type=file>`（作为附件上传） |
 
 说明：
 - **`tabs/new` 的 `close_after` 为必填参数** —— 整数秒（1..604800），到期标签自动销毁并回收内存，如 `close_after=3600` = 1 小时；不传或非法值返回 HTTP 400 并附自解释错误信息。设计目的：强制智能体声明标签存活时长，防止开大量标签不关耗尽内存；人在手机 UI 上手动开标签（➕ / 显示WebView / 页面弹窗）默认 1 小时自动关闭。`GET /tabs` 每个标签返回 `auto_close_in_s`（剩余存活秒数）
+- **下载文件（v1.4.2）** —— WebView 内发生的下载（直链、`blob:` 导出、`data:` URL）都会自动捕获到该 Profile 的私有存储，不会写入手机的公共下载目录。用 `GET .../downloads` 列出（字段：id、name、size、state、url），用 `GET .../downloads/<id>/file` 拉取字节，`DELETE .../downloads/<id>` 删除。要把文件作为**附件**上传到网站（如从 A 站导出后传到 B 站）：打开目标标签页后调 `POST .../downloads/<id>/upload?tab=<tabId>&selector=<css>` —— 文件会交给页面上第一个匹配的 `<input type=file>`，页面随即走自己的上传流程（若不自动提交，用 `/eval` 自行提交表单）。注意标签页必须存活（记得 `close_after`），且 selector 必须指向当前页面上的真实文件输入框。手机端 WebView 顶栏有 ⬇ 按钮可查看这些文件（点标题打开、🗑 删除）
 - 标签页默认以桌面 Chrome UA 渲染（1080x2340 headless），可用 `&ua=...` 覆盖
 - 非 http(s) 跳转（如 `baiduboxapp://` 深链）会被拦截，防止劫持
 - `duration` 到期自动关闭，与桌面版一致

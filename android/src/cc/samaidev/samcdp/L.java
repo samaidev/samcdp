@@ -123,6 +123,15 @@ public final class L {
         put("tab.current", " · current", " · 当前");
         put("tab.ttlIn", "auto-closes in %s", "%s后自动关闭");
 
+        // ---- TabActivity: downloads dialog (v1.4.2) ----
+        put("dl.title", "Downloads · %d", "下载文件 · %d");
+        put("dl.none", "No downloads yet\nFiles saved from any WebView page appear here", "还没有下载文件\n在 WebView 页面里保存的文件会出现在这里");
+        put("dl.deleted", "Deleted", "已删除");
+        put("dl.delFail", "Delete failed", "删除失败");
+        put("dl.openFail", "No app can open this file type", "没有应用可以打开此类型文件");
+        put("dl.stateRunning", "downloading · %s", "下载中 · %s");
+        put("dl.stateError", "failed · %s", "失败 · %s");
+
         // ---- TunnelManager / CdpService ----
         put("tunnel.needKey", "Subdomain mode requires an aitun Key (pick temp proxy if left empty)",
                 "子域名模式需要填入 aitun Key（留空请改选临时代理）");
@@ -161,6 +170,15 @@ public final class L {
         put("api.screenshot", "Tab PNG screenshot", "标签页 PNG 截图");
         put("api.eval", "Run JS (body {\"js\":\"...\"})", "执行 JS（body {\"js\":\"...\"}）");
         put("api.cdpPassthrough", "CDP-style passthrough", "CDP 风格透传");
+        // ---- Api.java: downloads (v1.4.2) ----
+        put("api.dlAgg", "Downloads across ALL profiles (running proxied live, stopped read from disk)", "全部 Profile 的下载文件（运行中实时代理，未运行读磁盘）");
+        put("api.dlList", "List this profile's WebView-downloaded files", "列出该 Profile 的 WebView 下载文件");
+        put("api.dlFile", "Pull a downloaded file (raw bytes, streams from disk)", "拉取已下载文件（原始字节，磁盘流式读取）");
+        put("api.dlDelete", "Delete a downloaded file", "删除已下载文件");
+        put("api.dlUpload", "Hand a downloaded file to a page's &lt;input type=file&gt; (attach &amp; upload)", "把已下载文件交给网页的 &lt;input type=file&gt;（作为附件上传）");
+        put("api.dlTitle", "⬇ Downloads: capture → pull → attach", "⬇ 下载文件：捕获 → 拉取 → 附件上传");
+        put("api.dlBody", "Files downloaded inside any WebView (direct links, blob exports, data: URLs) are captured automatically into that profile's private storage — nothing touches the phone's public Downloads folder. List them with <code>GET .../downloads</code> (fields: id, name, size, state, url). <b>Pull</b> the bytes with <code>GET .../downloads/&lt;id&gt;/file</code>. To use a file as an <b>attachment</b> on a website (e.g. upload it to site B after exporting from site A): open the target tab, then call <code>POST .../downloads/&lt;id&gt;/upload?tab=&lt;tabId&gt;&amp;selector=&lt;css&gt;</code> — the file is handed to the page's first matching <code>&lt;input type=file&gt;</code> and the page continues its own upload flow (submit the form yourself via <code>/eval</code> if it doesn't auto-submit). The tab must be alive (remember <code>close_after</code>), and the selector must point at a real file input on the CURRENT page.",
+                "WebView 内发生的下载（直链、blob 导出、data: URL）都会自动捕获到该 Profile 的私有存储，不会写入手机的公共下载目录。用 <code>GET .../downloads</code> 列出（字段: id, name, size, state, url），用 <code>GET .../downloads/&lt;id&gt;/file</code> <b>拉取</b>文件字节。要把文件作为<b>附件</b>上传到网站（如从 A 站导出后传到 B 站）：打开目标标签页，然后调用 <code>POST .../downloads/&lt;id&gt;/upload?tab=&lt;tabId&gt;&amp;selector=&lt;css&gt;</code> —— 文件会交给页面上第一个匹配的 <code>&lt;input type=file&gt;</code>，页面随即走自己的上传流程（若不自动提交，用 <code>/eval</code> 自行提交表单）。注意标签页必须存活（记得 <code>close_after</code>），且 selector 必须指向当前页面上的真实文件输入框。");
         put("api.caTitle", "⚠ close_after is REQUIRED (prevents tab leaks)", "⚠ close_after 必填（防标签泄漏）");
         put("api.caBody", "Tabs opened via the API MUST pass <code>close_after=&lt;seconds&gt;</code> (1..604800, i.e. up to 7 days); "
                 + "the tab is destroyed and its memory reclaimed when the time is up. Missing or invalid values are rejected "

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="cc.samaidev.samcdp"
-    android:versionCode="28"
-    android:versionName="1.4.1">
+    android:versionCode="29"
+    android:versionName="1.4.2">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -56,5 +56,13 @@
         <service android:name=".RunnerService4" android:exported="false" android:process=":cdp4" android:foregroundServiceType="dataSync" />
         <service android:name=".RunnerService5" android:exported="false" android:process=":cdp5" android:foregroundServiceType="dataSync" />
         <service android:name=".RunnerService6" android:exported="false" android:process=":cdp6" android:foregroundServiceType="dataSync" />
+        <!-- v1.4.2: serves WebView-downloaded files over content:// for
+             ACTION_VIEW opens (phone ⬇ list) and onShowFileChooser uploads.
+             Not exported — access granted per-intent via grantUriPermissions. -->
+        <provider
+            android:name=".DownloadsProvider"
+            android:authorities="cc.samaidev.samcdp.downloads"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

@@ -173,9 +173,15 @@ Identical to desktop, plus mobile-specific extras:
 | `GET` | `/api/profiles/<name>/tabs/<id>/screenshot?token=xxx` | PNG screenshot of the tab |
 | `POST` | `/api/profiles/<name>/tabs/<id>/eval?token=xxx` | Run JS in the tab, body `{"js":"..."}` |
 | `GET` | `/<profile>/json/version` · `/<profile>/json/list` | CDP-style passthrough |
+| `GET` | `/api/downloads?token=xxx` | Downloads across ALL profiles (running proxied live, stopped read from disk) |
+| `GET` | `/api/profiles/<name>/downloads?token=xxx` | List this profile's WebView-downloaded files |
+| `GET` | `/api/profiles/<name>/downloads/<id>/file?token=xxx` | Pull a downloaded file (raw bytes) |
+| `DELETE` | `/api/profiles/<name>/downloads/<id>?token=xxx` | Delete a downloaded file |
+| `POST` | `/api/profiles/<name>/downloads/<id>/upload?tab=ID&selector=CSS&token=xxx` | Hand a downloaded file to a page's `<input type=file>` (attach & upload) |
 
 Notes:
 - **`close_after` is REQUIRED on `tabs/new`** — integer seconds (1..604800) until the tab is auto-destroyed and its memory reclaimed, e.g. `close_after=3600` = 1 hour. Requests without it get HTTP 400 with a self-explanatory error. This exists so agents must declare a tab's lifetime instead of leaking tabs; tabs opened by a human on the phone UI (➕ button / 显示WebView / page popups) default to 1 hour. `GET /tabs` returns `auto_close_in_s` (remaining seconds) per tab
+- **Downloads (v1.4.2)** — files downloaded inside any WebView (direct links, `blob:` exports, `data:` URLs) are captured automatically into that profile's private storage (nothing touches the phone's public Downloads folder). List with `GET .../downloads` (fields: id, name, size, state, url), pull bytes with `GET .../downloads/<id>/file`, delete with `DELETE .../downloads/<id>`. To use a file as an **attachment** on a website (e.g. upload to site B after exporting from site A): open the target tab, then `POST .../downloads/<id>/upload?tab=<tabId>&selector=<css>` — the file is handed to the page's first matching `<input type=file>` and the page continues its own upload flow (submit the form via `/eval` if it doesn't auto-submit). The tab must be alive (remember `close_after`) and the selector must point at a real file input on the CURRENT page. The phone UI's WebView toolbar has a ⬇ button listing these files (tap title to open, 🗑 to delete)
 - Tabs render headless (1080x2340) with a desktop Chrome User-Agent by default; pass `&ua=...` to override
 - Non-http(s) navigations (deep links like `baiduboxapp://`) are blocked to prevent hijacks
 - `duration` triggers auto-stop, mirroring desktop behavior

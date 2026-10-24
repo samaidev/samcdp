@@ -86,7 +86,7 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/health")) {
             JSONObject o = ok();
-            o.put("version", "1.3.9");
+            o.put("version", "1.4.2");
             o.put("uptime_s", (System.currentTimeMillis() - startedAt) / 1000);
             return json(200, o);
         }
@@ -94,7 +94,7 @@ public class Api extends HttpServer {
         if (path.equals("/api/status")) {
             JSONObject o = ok();
             o.put("app", "samcdp-android");
-            o.put("version", "1.3.9");
+            o.put("version", "1.4.2");
             o.put("ip", CdpService.localIp());
             o.put("port", port());
             o.put("lan_url", "http://" + CdpService.localIp() + ":" + port());
@@ -126,6 +126,37 @@ public class Api extends HttpServer {
 
         if (path.equals("/api/tunnel")) {
             return json(200, new JSONObject(TunnelManager.statusJson()));
+        }
+
+        // v1.4.2: downloads across ALL profiles — running ones are proxied to their
+        // runner (in-memory registry), stopped ones are read from disk meta.json.
+        if (path.equals("/api/downloads") && req.method.equals("GET")) {
+            String want = req.query.get("profile");
+            JSONObject o = ok();
+            JSONArray arr = new JSONArray();
+            for (Profile p : ProfileManager.profiles()) {
+                if (want != null && !want.isEmpty() && !want.equals(p.name)) continue;
+                JSONObject po = new JSONObject();
+                try {
+                    po.put("profile", p.name);
+                    po.put("running", p.running);
+                    String body;
+                    if (p.running) {
+                        body = new String(ProfileManager.downloads(p).payload, java.nio.charset.StandardCharsets.UTF_8);
+                    } else {
+                        body = Downloads.diskListJson(CdpService.appContext(), p.slot);
+                    }
+                    JSONObject parsed = new JSONObject(body);
+                    JSONArray dl = parsed.optJSONArray("downloads");
+                    po.put("downloads", dl == null ? new JSONArray() : dl);
+                } catch (Exception e) {
+                    po.put("downloads", new JSONArray());
+                    po.put("error", e.getMessage());
+                }
+                arr.put(po);
+            }
+            o.put("profiles", arr);
+            return json(200, o);
         }
 
         // Aggregated multi-profile frontend state: every running profile's tabs +
@@ -336,6 +367,39 @@ public class Api extends HttpServer {
                     if (js.isEmpty()) return err(400, "js required (?js=... or body {\"js\":\"...\"})");
                     return toResp(ProfileManager.eval(p, id, js));
                 }
+
+                // ---- v1.4.2: per-profile downloads ----
+                // /api/profiles/<name>/downloads                     list
+                // /api/profiles/<name>/downloads/<id>                DELETE
+                // /api/profiles/<name>/downloads/<id>/file           pull raw bytes
+                // /api/profiles/<name>/downloads/<id>/upload         attach to page file input
+                if (seg.length >= 5 && seg[4].equals("downloads")) {
+                    if (seg.length == 5 && req.method.equals("GET")) {
+                        return toResp(ProfileManager.downloads(p));
+                    }
+                    if (seg.length == 6 && req.method.equals("DELETE")) {
+                        return toResp(ProfileManager.downloadDelete(p, seg[5]));
+                    }
+                    if (seg.length == 7 && seg[6].equals("file") && req.method.equals("GET")) {
+                        return toResp(ProfileManager.downloadFile(p, seg[5]));
+                    }
+                    if (seg.length == 7 && seg[6].equals("upload") && req.method.equals("POST")) {
+                        String tab = req.query.get("tab");
+                        String selector = req.query.get("selector");
+                        if ((tab == null || selector == null) && req.body.length > 0) {
+                            try {
+                                JSONObject jb = new JSONObject(req.bodyString());
+                                if (tab == null) tab = jb.optString("tab", null);
+                                if (selector == null) selector = jb.optString("selector", null);
+                            } catch (Exception ignored) {
+                            }
+                        }
+                        if (tab == null || tab.isEmpty()) return err(400, "tab required (?tab=<tabId>)");
+                        if (selector == null || selector.isEmpty())
+                            return err(400, "selector required (?selector=<css> of the page's <input type=file>)");
+                        return toResp(ProfileManager.downloadUpload(p, seg[5], tab, selector));
+                    }
+                }
             }
         }
 
@@ -346,9 +410,9 @@ public class Api extends HttpServer {
             if (seg.length == 4 && seg[3].equals("version")) {
                 JSONObject o = new JSONObject();
                 try {
-                    o.put("Browser", "samcdp-webview/1.3.9");
+                    o.put("Browser", "samcdp-webview/1.4.2");
                     o.put("Protocol-Version", "1.3");
-                    o.put("User-Agent", "samcdp-android/1.3.9 (Android " + android.os.Build.VERSION.RELEASE + ")");
+                    o.put("User-Agent", "samcdp-android/1.4.2 (Android " + android.os.Build.VERSION.RELEASE + ")");
                     o.put("Android", android.os.Build.VERSION.RELEASE);
                     o.put("Profile", p.name);
                     o.put("Running", p.running);
@@ -418,7 +482,7 @@ public class Api extends HttpServer {
         sb.append("td,th{border:1px solid #F2DDB2;padding:7px 10px;text-align:left}th{color:#D2610F;background:#FFF8EA}");
         sb.append(".u{color:#2F9E44;font-family:monospace;word-break:break-all}");
         sb.append("</style></head><body>");
-        sb.append("<h1>⚙ samcdp Android v1.4.1</h1>");
+        sb.append("<h1>⚙ samcdp Android v1.4.2</h1>");
         sb.append("<p class=\"muted\">").append(L.t("api.subtitle")).append("<br>");
         sb.append(L.t("api.remoteAddr")).append(" <span class=\"u\">").append(remote).append("</span></p>");
         sb.append("<h2>").append(L.t("api.endpoints")).append("</h2><table>");
@@ -444,9 +508,16 @@ public class Api extends HttpServer {
         row(sb, "DELETE", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;?token=xxx", L.t("api.closeTab"));
         row(sb, "GET", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/screenshot?token=xxx", L.t("api.screenshot"));
         row(sb, "POST", "/api/profiles/&lt;name&gt;/tabs/&lt;id&gt;/eval?token=xxx", L.t("api.eval"));
+        row(sb, "GET", "/api/downloads?token=xxx", L.t("api.dlAgg"));
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/downloads?token=xxx", L.t("api.dlList"));
+        row(sb, "GET", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;/file?token=xxx", L.t("api.dlFile"));
+        row(sb, "DELETE", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;?token=xxx", L.t("api.dlDelete"));
+        row(sb, "POST", "/api/profiles/&lt;name&gt;/downloads/&lt;id&gt;/upload?tab=ID&amp;selector=CSS&amp;token=xxx", L.t("api.dlUpload"));
         row(sb, "GET", "/&lt;profile&gt;/json/version | /json/list?token=xxx", L.t("api.cdpPassthrough"));
         sb.append("</table>");
         sb.append("<p class=\"muted\">").append(L.t("api.autoStartNote")).append("</p>");
+        sb.append("<h2>").append(L.t("api.dlTitle")).append("</h2>");
+        sb.append("<p>").append(L.t("api.dlBody")).append("</p>");
         sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.caBody")).append("</p>");
         sb.append("<h2>").append(L.t("api.examples")).append("</h2>");

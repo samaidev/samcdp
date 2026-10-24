@@ -137,14 +137,14 @@ func generateICO() []byte {
 	binary.LittleEndian.PutUint16(header[4:], 1) // count = 1
 
 	entry := make([]byte, 16)
-	entry[0] = byte(s) // width
-	entry[1] = byte(s) // height
-	entry[2] = 0       // colors
-	entry[3] = 0       // reserved
-	binary.LittleEndian.PutUint16(entry[4:], 1) // planes
-	binary.LittleEndian.PutUint16(entry[6:], 32) // bpp
+	entry[0] = byte(s)                                             // width
+	entry[1] = byte(s)                                             // height
+	entry[2] = 0                                                   // colors
+	entry[3] = 0                                                   // reserved
+	binary.LittleEndian.PutUint16(entry[4:], 1)                    // planes
+	binary.LittleEndian.PutUint16(entry[6:], 32)                   // bpp
 	binary.LittleEndian.PutUint32(entry[8:], uint32(len(pngData))) // size
-	binary.LittleEndian.PutUint32(entry[12:], uint32(6+16))       // offset
+	binary.LittleEndian.PutUint32(entry[12:], uint32(6+16))        // offset
 
 	var buf bytes.Buffer
 	buf.Write(header)

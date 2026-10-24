@@ -7,4 +7,4 @@ package main
 
 func winIsAutoStartEnabled() (bool, error) { return false, nil }
 func winEnableAutoStart() error            { return nil }
-func winDisableAutoStart() error            { return nil }
+func winDisableAutoStart() error           { return nil }

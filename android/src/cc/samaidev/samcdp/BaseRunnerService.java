@@ -130,6 +130,8 @@ public abstract class BaseRunnerService extends Service {
             tabServer = new ServerSocket(port, 32, java.net.InetAddress.getByName("127.0.0.1"));
             tabServer.setReuseAddress(true);
             pool = Executors.newCachedThreadPool();
+            // v1.4.2: downloads registry for THIS profile (per-process state)
+            Downloads.init(getApplicationContext(), slot(), currentProfile);
             Thread t = new Thread(() -> {
                 while (tabServer != null && !tabServer.isClosed()) {
                     try {
@@ -199,7 +201,68 @@ public abstract class BaseRunnerService extends Service {
             byte[] payload;
             String[] seg = path.split("/");
 
-            if (path.equals("/info") && method.equals("GET")) {
+            // v1.4.2: /downloads/<id>/file streams raw bytes from disk — bypasses the
+            // payload buffer so multi-MB files don't have to fit in a byte[] first
+            if (seg.length == 4 && seg[1].equals("downloads") && seg[3].equals("file")
+                    && method.equals("GET")) {
+                Downloads.Entry de = Downloads.find(seg[2]);
+                java.io.File df = de == null ? null : new java.io.File(de.path);
+                if (de == null || df == null || !df.isFile()) {
+                    payload = "{\"ok\":false,\"error\":\"download not found\"}"
+                            .getBytes(StandardCharsets.UTF_8);
+                    String h404 = "HTTP/1.1 404 Not Found\r\nContent-Type: " + ct
+                            + "\r\nContent-Length: " + payload.length
+                            + "\r\nConnection: close\r\n\r\n";
+                    out.write(h404.getBytes(StandardCharsets.UTF_8));
+                    out.write(payload);
+                    out.flush();
+                    socket.close();
+                    return;
+                }
+                String mime = de.mime == null || de.mime.isEmpty()
+                        ? "application/octet-stream" : de.mime;
+                String disp = "attachment; filename=\"" + de.name.replaceAll("[\"\\\\]", "_") + "\"";
+                String head = "HTTP/1.1 200 OK\r\nContent-Type: " + mime
+                        + "\r\nContent-Disposition: " + disp
+                        + "\r\nContent-Length: " + df.length()
+                        + "\r\nConnection: close\r\n\r\n";
+                out.write(head.getBytes(StandardCharsets.UTF_8));
+                try (java.io.FileInputStream fin = new java.io.FileInputStream(df)) {
+                    byte[] fbuf = new byte[65536];
+                    int fn;
+                    while ((fn = fin.read(fbuf)) != -1) out.write(fbuf, 0, fn);
+                }
+                out.flush();
+                socket.close();
+                return;
+            }
+
+            if (path.equals("/downloads") && method.equals("GET")) {
+                payload = Downloads.listJson().getBytes(StandardCharsets.UTF_8);
+            } else if (seg.length == 4 && seg[1].equals("downloads") && seg[3].equals("upload")
+                    && method.equals("POST")) {
+                // v1.4.2: hand a downloaded file to a page's <input type=file>
+                String tabId = query.get("tab");
+                String selector = query.get("selector");
+                if ((tabId == null || selector == null) && body.length > 0) {
+                    try {
+                        JSONObject jb = new JSONObject(new String(body, StandardCharsets.UTF_8));
+                        if (tabId == null) tabId = jb.optString("tab", null);
+                        if (selector == null) selector = jb.optString("selector", null);
+                    } catch (Exception ignored) {
+                    }
+                }
+                Downloads.Entry de = Downloads.find(seg[2]);
+                if (de == null) {
+                    payload = "{\"ok\":false,\"error\":\"download not found\"}"
+                            .getBytes(StandardCharsets.UTF_8);
+                } else {
+                    payload = TabEngine.uploadFile(tabId, selector, de)
+                            .getBytes(StandardCharsets.UTF_8);
+                }
+            } else if (seg.length == 3 && seg[1].equals("downloads") && method.equals("DELETE")) {
+                payload = Downloads.delete(seg[2]).getBytes(StandardCharsets.UTF_8);
+            } else if (path.equals("/info") && method.equals("GET")) {
                 payload = TabEngine.infoJson().getBytes(StandardCharsets.UTF_8);
             } else if (path.equals("/tabs") && method.equals("GET")) {
                 payload = TabEngine.listTabs().getBytes(StandardCharsets.UTF_8);

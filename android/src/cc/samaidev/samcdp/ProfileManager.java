@@ -388,6 +388,30 @@ public class ProfileManager {
         return proxy(p, "GET", "/visible", null);
     }
 
+    // ------------------------------------------------------------ downloads proxy (v1.4.2)
+
+    /** List the profile's WebView-downloaded files. */
+    public static ProxyResult downloads(Profile p) {
+        return proxy(p, "GET", "/downloads", null);
+    }
+
+    /** Pull a downloaded file's raw bytes (runner streams; buffered here). */
+    public static ProxyResult downloadFile(Profile p, String id) {
+        return proxy(p, "GET", "/downloads/" + urlencode(id) + "/file", null);
+    }
+
+    /** Delete a downloaded file. */
+    public static ProxyResult downloadDelete(Profile p, String id) {
+        return proxy(p, "DELETE", "/downloads/" + urlencode(id), null);
+    }
+
+    /** Hand a downloaded file to a page's <input type=file> (attach & upload). */
+    public static ProxyResult downloadUpload(Profile p, String id, String tab, String selector) {
+        String q = "/downloads/" + urlencode(id) + "/upload?tab=" + urlencode(tab)
+                + "&selector=" + urlencode(selector);
+        return proxy(p, "POST", q, null);
+    }
+
     public static String urlencode(String s) {
         try {
             return java.net.URLEncoder.encode(s, "UTF-8");

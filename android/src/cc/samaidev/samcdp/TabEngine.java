@@ -6,6 +6,7 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.os.Build;
 import android.os.Handler;
+import android.net.Uri;
 import android.os.Looper;
 import android.webkit.CookieManager;
 import android.webkit.WebChromeClient;
@@ -249,6 +250,7 @@ public class TabEngine {
         // close any full-screen host BEFORE destroying the WebViews underneath it
         detach();
         stopAutoCloseTimer();
+        failPendingUpload(null, "engine stopped");
         if (durationTimer != null) {
             MAIN.removeCallbacks(durationTimer);
             durationTimer = null;
@@ -455,6 +457,44 @@ public class TabEngine {
                     log("[" + profileName + "] onCloseWindow failed: " + e.getMessage());
                 }
             }
+
+            @Override
+            public boolean onShowFileChooser(WebView wv, android.webkit.ValueCallback<Uri[]> filePathCallback,
+                                             android.webkit.WebChromeClient.FileChooserParams params) {
+                // v1.4.2: a pending API upload (POST /downloads/<id>/upload) is consumed
+                // here — instead of a picker the page receives the downloaded file.
+                PendingUpload pu = pendingUpload;
+                if (pu == null || pu.wv != wv || pu.consumed
+                        || System.currentTimeMillis() > pu.deadline) {
+                    return false;
+                }
+                synchronized (pu) {
+                    if (pu.consumed) return false;
+                    pu.consumed = true;
+                }
+                pendingUpload = null;
+                final Uri uri = Downloads.contentUri(pu.entry);
+                try {
+                    filePathCallback.onReceiveValue(new Uri[]{uri});
+                } catch (Exception e) {
+                    try {
+                        filePathCallback.onReceiveValue(null);
+                    } catch (Exception ignored) {
+                    }
+                }
+                pu.error = null;
+                pu.done.countDown();
+                return true;
+            }
+        });
+        wv.setDownloadListener((dUrl, dUa, dCd, dMime, dLen) -> {
+            // v1.4.2: capture WebView downloads (http/blob/data) into the profile's
+            // private downloads store — visible on the phone (⬇) and via the API.
+            try {
+                Downloads.handle(ctx, dUrl, dUa, dCd, dMime, dLen);
+            } catch (Exception e) {
+                log("[" + profileName + "] download dispatch failed: " + e.getMessage());
+            }
         });
         wv.measure(android.view.View.MeasureSpec.makeMeasureSpec(headlessW, android.view.View.MeasureSpec.EXACTLY),
                 android.view.View.MeasureSpec.makeMeasureSpec(headlessH, android.view.View.MeasureSpec.EXACTLY));
@@ -601,6 +641,7 @@ public class TabEngine {
         boolean wasVisible = f.id.equals(visibleTabId);
         android.app.Activity host = visibleHost;
         ViewGroup root = visibleRoot;
+        failPendingUpload(f.webView, "tab closed");
         if (wasVisible) detachAttached(); // off the root BEFORE destroy
         runAndWait(() -> {
             try {
@@ -632,6 +673,145 @@ public class TabEngine {
             log("[" + profileName + "] tab " + closedId + " closed");
         }
         return "{\"ok\":true}";
+    }
+
+    // ------------------------------------------------------------ downloads / upload (v1.4.2)
+
+    /** Pending "hand a downloaded file to a page file-input" request. The
+     *  WebChromeClient.onShowFileChooser override consumes it when the JS click
+     *  on the selector makes the WebView ask for a file. */
+    static class PendingUpload {
+        final WebView wv;
+        final Downloads.Entry entry;
+        final long deadline;
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        volatile boolean consumed;
+        volatile String error;
+
+        PendingUpload(WebView wv, Downloads.Entry entry) {
+            this.wv = wv;
+            this.entry = entry;
+            this.deadline = System.currentTimeMillis() + 12_000;
+        }
+    }
+
+    private static volatile PendingUpload pendingUpload;
+
+    private static void failPendingUpload(WebView wv, String why) {
+        PendingUpload pu = pendingUpload;
+        if (pu != null && (wv == null || pu.wv == wv)) {
+            pendingUpload = null;
+            if (pu.error == null) pu.error = why;
+            pu.done.countDown();
+        }
+    }
+
+    /** v1.4.2: hand a downloaded file to a page's &lt;input type=file&gt;.
+     *  Injects a JS click on the selector; the chrome client intercepts the
+     *  resulting onShowFileChooser and feeds the file's content:// URI back.
+     *  Blocks on the route thread up to ~12s waiting for the chooser to fire. */
+    public static String uploadFile(String tabId, String selector, Downloads.Entry entry) {
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        TabItem t = null;
+        if (tabs != null) for (TabItem x : tabs) if (x.id.equals(tabId) || x.id.startsWith(tabId)) t = x;
+        if (t == null || t.webView == null) return err("tab not found: " + tabId);
+        if (selector == null || selector.trim().isEmpty())
+            return err("selector required (?selector=<css> of the page's <input type=file>)");
+        if (entry == null || entry.path == null
+                || !new java.io.File(entry.path).isFile())
+            return err("download not found or file already deleted");
+
+        final TabItem tab = t;
+        PendingUpload pu = new PendingUpload(tab.webView, entry);
+        pendingUpload = pu;
+
+        String js = "(function(){try{var el=document.querySelector("
+                + JSONObject.quote(selector.trim()) + ");"
+                + "if(!el){return 'NO_ELEMENT';}el.click();return 'CLICKED';}catch(e){return 'ERR:'+e;}})()";
+        CountDownLatch clickLatch = new CountDownLatch(1);
+        String[] clickRes = new String[1];
+        Runnable click = () -> {
+            try {
+                tab.webView.evaluateJavascript(js, v -> {
+                    clickRes[0] = v;
+                    clickLatch.countDown();
+                });
+            } catch (Exception e) {
+                clickRes[0] = null;
+                clickLatch.countDown();
+            }
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) click.run();
+        else MAIN.post(click);
+        try {
+            clickLatch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        String res = clickRes[0] == null ? "" : clickRes[0].replace("\"", "");
+        if (res.contains("NO_ELEMENT")) {
+            pendingUpload = null;
+            return err("selector matched nothing on the page: " + selector);
+        }
+        if (res.startsWith("ERR:")) {
+            pendingUpload = null;
+            return err("selector click failed: " + res.substring(4));
+        }
+
+        boolean fired = false;
+        try {
+            fired = pu.done.await(12, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        if (pendingUpload == pu) pendingUpload = null; // timeout cleanup
+
+        if (fired && pu.error == null) {
+            JSONObject o = new JSONObject();
+            try {
+                o.put("ok", true);
+                o.put("file", entry.name);
+                o.put("tab", tab.id);
+                o.put("selector", selector);
+                o.put("note", "file handed to the page's file input; continue the site's own flow "
+                        + "(e.g. submit the form via /tabs/" + t.id + "/eval)");
+            } catch (Exception ignored) {
+            }
+            return o.toString();
+        }
+        return err(pu.error != null ? pu.error
+                : "no file chooser fired within 12s — the selector may not be a real <input type=file>, "
+                + "or the page opens a custom picker");
+    }
+
+    /** v1.4.2: locate a live WebView that can fetch the given blob: URL
+     *  (same-origin tab preferred — a cross-origin fetch would be denied). */
+    static Downloads.WebViewHandle webViewForBlob(Context ctx, String blobUrl) {
+        String origin = "";
+        int c1 = blobUrl.indexOf(':');
+        int c2 = c1 >= 0 ? blobUrl.indexOf('/', c1 + 1) : -1;
+        if (c1 >= 0) origin = blobUrl.substring(c1 + 1, c2 > 0 ? c2 : blobUrl.length());
+        List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
+        TabItem pick = null;
+        if (tabs != null) {
+            for (TabItem t : tabs) {
+                if (t.webView == null) continue;
+                String u = t.url == null ? "" : t.url;
+                if (!origin.isEmpty() && u.startsWith(origin)) {
+                    pick = t;
+                    break;
+                }
+            }
+            if (pick == null && !tabs.isEmpty()) pick = tabs.get(tabs.size() - 1);
+        }
+        return pick == null ? null : new Downloads.WebViewHandle(pick.webView);
+    }
+
+    static void postToMain(Runnable r) {
+        if (Looper.myLooper() == Looper.getMainLooper()) r.run();
+        else MAIN.post(r);
+    }
+
+    static void postToMainDelayed(Runnable r, long ms) {
+        MAIN.postDelayed(r, ms);
     }
 
     static String eval(String id, String js) {
