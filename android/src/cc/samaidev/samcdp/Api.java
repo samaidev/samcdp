@@ -367,38 +367,38 @@ public class Api extends HttpServer {
                     if (js.isEmpty()) return err(400, "js required (?js=... or body {\"js\":\"...\"})");
                     return toResp(ProfileManager.eval(p, id, js));
                 }
+            }
 
-                // ---- v1.4.2: per-profile downloads ----
-                // /api/profiles/<name>/downloads                     list
-                // /api/profiles/<name>/downloads/<id>                DELETE
-                // /api/profiles/<name>/downloads/<id>/file           pull raw bytes
-                // /api/profiles/<name>/downloads/<id>/upload         attach to page file input
-                if (seg.length >= 5 && seg[4].equals("downloads")) {
-                    if (seg.length == 5 && req.method.equals("GET")) {
-                        return toResp(ProfileManager.downloads(p));
-                    }
-                    if (seg.length == 6 && req.method.equals("DELETE")) {
-                        return toResp(ProfileManager.downloadDelete(p, seg[5]));
-                    }
-                    if (seg.length == 7 && seg[6].equals("file") && req.method.equals("GET")) {
-                        return toResp(ProfileManager.downloadFile(p, seg[5]));
-                    }
-                    if (seg.length == 7 && seg[6].equals("upload") && req.method.equals("POST")) {
-                        String tab = req.query.get("tab");
-                        String selector = req.query.get("selector");
-                        if ((tab == null || selector == null) && req.body.length > 0) {
-                            try {
-                                JSONObject jb = new JSONObject(req.bodyString());
-                                if (tab == null) tab = jb.optString("tab", null);
-                                if (selector == null) selector = jb.optString("selector", null);
-                            } catch (Exception ignored) {
-                            }
+            // ---- v1.4.2: per-profile downloads ----
+            // /api/profiles/<name>/downloads                     list
+            // /api/profiles/<name>/downloads/<id>                DELETE
+            // /api/profiles/<name>/downloads/<id>/file           pull raw bytes
+            // /api/profiles/<name>/downloads/<id>/upload         attach to page file input
+            if (seg.length >= 5 && seg[4].equals("downloads")) {
+                if (seg.length == 5 && req.method.equals("GET")) {
+                    return toResp(ProfileManager.downloads(p));
+                }
+                if (seg.length == 6 && req.method.equals("DELETE")) {
+                    return toResp(ProfileManager.downloadDelete(p, seg[5]));
+                }
+                if (seg.length == 7 && seg[6].equals("file") && req.method.equals("GET")) {
+                    return toResp(ProfileManager.downloadFile(p, seg[5]));
+                }
+                if (seg.length == 7 && seg[6].equals("upload") && req.method.equals("POST")) {
+                    String tab = req.query.get("tab");
+                    String selector = req.query.get("selector");
+                    if ((tab == null || selector == null) && req.body.length > 0) {
+                        try {
+                            JSONObject jb = new JSONObject(req.bodyString());
+                            if (tab == null) tab = jb.optString("tab", null);
+                            if (selector == null) selector = jb.optString("selector", null);
+                        } catch (Exception ignored) {
                         }
-                        if (tab == null || tab.isEmpty()) return err(400, "tab required (?tab=<tabId>)");
-                        if (selector == null || selector.isEmpty())
-                            return err(400, "selector required (?selector=<css> of the page's <input type=file>)");
-                        return toResp(ProfileManager.downloadUpload(p, seg[5], tab, selector));
                     }
+                    if (tab == null || tab.isEmpty()) return err(400, "tab required (?tab=<tabId>)");
+                    if (selector == null || selector.isEmpty())
+                        return err(400, "selector required (?selector=<css> of the page's <input type=file>)");
+                    return toResp(ProfileManager.downloadUpload(p, seg[5], tab, selector));
                 }
             }
         }

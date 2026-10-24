@@ -250,7 +250,6 @@ public class TabEngine {
         // close any full-screen host BEFORE destroying the WebViews underneath it
         detach();
         stopAutoCloseTimer();
-        failPendingUpload(null, "engine stopped");
         if (durationTimer != null) {
             MAIN.removeCallbacks(durationTimer);
             durationTimer = null;
@@ -461,30 +460,10 @@ public class TabEngine {
             @Override
             public boolean onShowFileChooser(WebView wv, android.webkit.ValueCallback<Uri[]> filePathCallback,
                                              android.webkit.WebChromeClient.FileChooserParams params) {
-                // v1.4.2: a pending API upload (POST /downloads/<id>/upload) is consumed
-                // here — instead of a picker the page receives the downloaded file.
-                PendingUpload pu = pendingUpload;
-                if (pu == null || pu.wv != wv || pu.consumed
-                        || System.currentTimeMillis() > pu.deadline) {
-                    return false;
-                }
-                synchronized (pu) {
-                    if (pu.consumed) return false;
-                    pu.consumed = true;
-                }
-                pendingUpload = null;
-                final Uri uri = Downloads.contentUri(pu.entry);
-                try {
-                    filePathCallback.onReceiveValue(new Uri[]{uri});
-                } catch (Exception e) {
-                    try {
-                        filePathCallback.onReceiveValue(null);
-                    } catch (Exception ignored) {
-                    }
-                }
-                pu.error = null;
-                pu.done.countDown();
-                return true;
+                // v1.4.2: uploads happen via the DataTransfer attach API
+                // (POST /downloads/<id>/upload) — no picker. Returning false keeps
+                // headless WebViews from ever launching a system chooser.
+                return false;
             }
         });
         wv.setDownloadListener((dUrl, dUa, dCd, dMime, dLen) -> {
@@ -641,7 +620,6 @@ public class TabEngine {
         boolean wasVisible = f.id.equals(visibleTabId);
         android.app.Activity host = visibleHost;
         ViewGroup root = visibleRoot;
-        failPendingUpload(f.webView, "tab closed");
         if (wasVisible) detachAttached(); // off the root BEFORE destroy
         runAndWait(() -> {
             try {
@@ -677,39 +655,14 @@ public class TabEngine {
 
     // ------------------------------------------------------------ downloads / upload (v1.4.2)
 
-    /** Pending "hand a downloaded file to a page file-input" request. The
-     *  WebChromeClient.onShowFileChooser override consumes it when the JS click
-     *  on the selector makes the WebView ask for a file. */
-    static class PendingUpload {
-        final WebView wv;
-        final Downloads.Entry entry;
-        final long deadline;
-        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
-        volatile boolean consumed;
-        volatile String error;
-
-        PendingUpload(WebView wv, Downloads.Entry entry) {
-            this.wv = wv;
-            this.entry = entry;
-            this.deadline = System.currentTimeMillis() + 12_000;
-        }
-    }
-
-    private static volatile PendingUpload pendingUpload;
-
-    private static void failPendingUpload(WebView wv, String why) {
-        PendingUpload pu = pendingUpload;
-        if (pu != null && (wv == null || pu.wv == wv)) {
-            pendingUpload = null;
-            if (pu.error == null) pu.error = why;
-            pu.done.countDown();
-        }
-    }
-
-    /** v1.4.2: hand a downloaded file to a page's &lt;input type=file&gt;.
-     *  Injects a JS click on the selector; the chrome client intercepts the
-     *  resulting onShowFileChooser and feeds the file's content:// URI back.
-     *  Blocks on the route thread up to ~12s waiting for the chooser to fire. */
+    /** v1.4.2: hand a downloaded file to a page's <input type=file>.
+     *  DataTransfer attach — no file-chooser picker involved, so it works on
+     *  HEADLESS WebViews (the normal agent case): the file's bytes are streamed
+     *  into the page as base64 chunks, assembled into a JS File, assigned to
+     *  the first element matching the selector via DataTransfer.files (standard
+     *  HTML: input.files is assignable), and 'change' is dispatched so site
+     *  frameworks see the selection. Runs on the route thread; per-chunk
+     *  evaluateJavascript calls hop to the UI thread like eval() does. */
     public static String uploadFile(String tabId, String selector, Downloads.Entry entry) {
         List<TabItem> tabs = profileName == null ? null : TABS.get(profileName);
         TabItem t = null;
@@ -722,64 +675,124 @@ public class TabEngine {
             return err("download not found or file already deleted");
 
         final TabItem tab = t;
-        PendingUpload pu = new PendingUpload(tab.webView, entry);
-        pendingUpload = pu;
+        final java.io.File src = new java.io.File(entry.path);
+        long total = src.length();
+        if (total > 128L * 1024 * 1024) {
+            return err("file too large for in-page attach (" + total + "B > 128MB); "
+                    + "pull it via /downloads/<id>/file and upload from your side instead");
+        }
+        final String sel = selector.trim();
+        final String fname = entry.name == null ? "file.bin" : entry.name;
+        final String fmime = entry.mime == null || entry.mime.isEmpty()
+                ? "application/octet-stream" : entry.mime.split(";")[0].trim();
 
-        String js = "(function(){try{var el=document.querySelector("
-                + JSONObject.quote(selector.trim()) + ");"
-                + "if(!el){return 'NO_ELEMENT';}el.click();return 'CLICKED';}catch(e){return 'ERR:'+e;}})()";
-        CountDownLatch clickLatch = new CountDownLatch(1);
-        String[] clickRes = new String[1];
-        Runnable click = () -> {
-            try {
-                tab.webView.evaluateJavascript(js, v -> {
-                    clickRes[0] = v;
-                    clickLatch.countDown();
-                });
-            } catch (Exception e) {
-                clickRes[0] = null;
-                clickLatch.countDown();
+        // 1. bootstrap the page-side receiver (keeps raw bytes only — no base64 copy)
+        String boot = "(function(){try{"
+                + "window.__samcdpU={acc:[],total:0,"
+                + "push:function(b){var bin=atob(b);var u8=new Uint8Array(bin.length);"
+                + "for(var i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);"
+                + "this.acc.push(u8);this.total+=u8.length;return 'PUSHED';},"
+                + "finish:function(sel,name,mime){"
+                + "var el=document.querySelector(sel);"
+                + "if(!el||String(el.type).toLowerCase()!=='file'){return 'NO_INPUT';}"
+                + "var m=new Uint8Array(this.total);var o=0;"
+                + "for(var i=0;i<this.acc.length;i++){m.set(this.acc[i],o);o+=this.acc[i].length;}"
+                + "var f=new File([m],name,{type:mime});"
+                + "var dt=new DataTransfer();dt.items.add(f);"
+                + "el.files=dt.files;"
+                + "try{el.dispatchEvent(new Event('input',{bubbles:true}));}catch(e){}"
+                + "el.dispatchEvent(new Event('change',{bubbles:true}));"
+                + "return 'SET:'+el.files.length+':'+el.files[0].name+':'+el.files[0].size;"
+                + "}};return 'BOOT';}catch(e){return 'BOOTERR:'+e;}})()";
+        String r = evalSync(tab.webView, boot, 8);
+        if (r == null || !r.contains("BOOT")) return err("page bootstrap failed: " + r);
+        if (r.contains("BOOTERR")) return err("page bootstrap error: " + r.substring(r.indexOf("BOOTERR") + 8));
+
+        // 2. stream the file in base64 chunks
+        final int CHUNK = 384 * 1024;
+        try (java.io.FileInputStream in = new java.io.FileInputStream(src)) {
+            byte[] buf = new byte[CHUNK];
+            int n;
+            long sent = 0;
+            while ((n = in.read(buf)) > 0) {
+                String b64 = android.util.Base64.encodeToString(buf, 0, n, android.util.Base64.NO_WRAP);
+                String push = "window.__samcdpU.push(" + JSONObject.quote(b64) + ")";
+                String pr = evalSync(tab.webView, push, 20);
+                if (pr == null || !pr.contains("PUSHED")) {
+                    return err("page chunk transfer failed at offset " + sent);
+                }
+                sent += n;
             }
-        };
-        if (Looper.myLooper() == Looper.getMainLooper()) click.run();
-        else MAIN.post(click);
-        try {
-            clickLatch.await(5, TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-        }
-        String res = clickRes[0] == null ? "" : clickRes[0].replace("\"", "");
-        if (res.contains("NO_ELEMENT")) {
-            pendingUpload = null;
-            return err("selector matched nothing on the page: " + selector);
-        }
-        if (res.startsWith("ERR:")) {
-            pendingUpload = null;
-            return err("selector click failed: " + res.substring(4));
+        } catch (Exception e) {
+            return err("file read failed: " + e.getMessage());
         }
 
-        boolean fired = false;
-        try {
-            fired = pu.done.await(12, TimeUnit.SECONDS);
-        } catch (InterruptedException ignored) {
-        }
-        if (pendingUpload == pu) pendingUpload = null; // timeout cleanup
-
-        if (fired && pu.error == null) {
+        // 3. assemble + attach + fire change
+        String fin = "(function(){try{return window.__samcdpU.finish("
+                + JSONObject.quote(sel) + "," + JSONObject.quote(fname) + ","
+                + JSONObject.quote(fmime) + ");}catch(e){return 'FINERR:'+e;}})()";
+        String res = evalSync(tab.webView, fin, 30);
+        evalSync(tab.webView, "try{delete window.__samcdpU}catch(e){window.__samcdpU=undefined};'CLEAN'", 5);
+        if (res == null) return err("attach timed out");
+        if (res.contains("NO_INPUT"))
+            return err("selector matched nothing (or the element is not a file input): " + sel);
+        if (res.contains("FINERR"))
+            return err("attach failed: " + res.substring(res.indexOf("FINERR") + 7));
+        if (res.contains("SET:")) {
+            String[] p = res.split(":");
             JSONObject o = new JSONObject();
             try {
                 o.put("ok", true);
-                o.put("file", entry.name);
+                o.put("file", fname);
+                o.put("bytes", total);
                 o.put("tab", tab.id);
-                o.put("selector", selector);
-                o.put("note", "file handed to the page's file input; continue the site's own flow "
-                        + "(e.g. submit the form via /tabs/" + t.id + "/eval)");
+                o.put("selector", sel);
+                if (p.length >= 4) {
+                    o.put("input_files", p[1]);
+                    o.put("attached_name", p[2]);
+                    o.put("attached_size", parseLongSafe(p[3]));
+                }
+                o.put("note", "file attached to the page's file input and 'change' dispatched; "
+                        + "continue the site's own flow (e.g. submit the form via /tabs/" + tab.id + "/eval)");
             } catch (Exception ignored) {
             }
             return o.toString();
         }
-        return err(pu.error != null ? pu.error
-                : "no file chooser fired within 12s — the selector may not be a real <input type=file>, "
-                + "or the page opens a custom picker");
+        return err("unexpected attach result: " + res);
+    }
+
+    private static long parseLongSafe(String s) {
+        try {
+            // evaluateJavascript results arrive as JSON string literals — strip quotes
+            return Long.parseLong(s.trim().replace("\"", ""));
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** Synchronous evaluateJavascript on the engine WebView (route-thread use). */
+    private static String evalSync(WebView wv, String js, int timeoutS) {
+        if (wv == null) return null;
+        CountDownLatch latch = new CountDownLatch(1);
+        String[] holder = new String[1];
+        Runnable task = () -> {
+            try {
+                wv.evaluateJavascript(js, v -> {
+                    holder[0] = v;
+                    latch.countDown();
+                });
+            } catch (Exception e) {
+                holder[0] = null;
+                latch.countDown();
+            }
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) task.run();
+        else MAIN.post(task);
+        try {
+            latch.await(timeoutS, TimeUnit.SECONDS);
+        } catch (InterruptedException ignored) {
+        }
+        return holder[0];
     }
 
     /** v1.4.2: locate a live WebView that can fetch the given blob: URL
