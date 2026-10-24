@@ -566,6 +566,8 @@ public class Api extends HttpServer {
                 + ".catch(function(e){out.push(f.name+' -> NET ERR '+e)});});})(fs[i]);}"
                 + "ch.then(function(){var el=document.getElementById('ulr');"
                 + "el.textContent=out.length?out.join('\\n'):'no file selected';});}"
+                + "document.getElementById('ulp').addEventListener('change',function(){"
+                + "var fs=this.files;if(fs.length){document.getElementById('ulr').textContent='uploading '+fs.length+' file(s)...';ulGo();}});"
                 + "</script>");
         sb.append("<h2>").append(L.t("api.caTitle")).append("</h2>");
         sb.append("<p>").append(L.t("api.caBody")).append("</p>");
