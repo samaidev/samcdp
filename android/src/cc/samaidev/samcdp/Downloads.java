@@ -262,6 +262,7 @@ public final class Downloads {
             e.state = "done";
             e.size = data.length;
             e.got = data.length;
+            e.path = fileFor(e).getAbsolutePath(); // v1.4.4 fix: attach/delete resolve through path
             try (OutputStream os = new FileOutputStream(fileFor(e))) {
                 os.write(data);
             }
