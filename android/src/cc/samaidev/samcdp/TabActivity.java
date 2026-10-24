@@ -354,6 +354,14 @@ public class TabActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        // v1.4.3: system file picker result -> the WebView's onShowFileChooser
+        // callback (TabEngine fires it with the picked URIs, or null on cancel)
+        TabEngine.onFileChooserResult(requestCode, resultCode, data);
+    }
+
+    @Override
     protected void onDestroy() {
         TabEngine.setPageUrlListener(null);
         TabEngine.detach();

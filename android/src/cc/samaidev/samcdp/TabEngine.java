@@ -162,6 +162,15 @@ public class TabEngine {
     /** Tab id currently attached to the visible host (null = headless). */
     static String visibleTabId() { return visibleTabId; }
 
+    // v1.4.3: interactive file chooser — a VISIBLE tab (human handover) may open
+    // the system file picker for <input type=file>. Headless tabs never do:
+    // agents attach files via POST /downloads/<id>/upload (DataTransfer, no UI).
+    // WebView blocks further chooser requests until the callback fires, so keep
+    // exactly ONE pending slot and ALWAYS fire it (result or null) — including
+    // when the tab goes headless while the picker is still up.
+    static final int REQ_FILE_CHOOSER = 9401;
+    private static volatile android.webkit.ValueCallback<Uri[]> pendingFileChooser;
+
     static class TabItem {
         final String id;
         volatile String url;
@@ -460,10 +469,34 @@ public class TabEngine {
             @Override
             public boolean onShowFileChooser(WebView wv, android.webkit.ValueCallback<Uri[]> filePathCallback,
                                              android.webkit.WebChromeClient.FileChooserParams params) {
-                // v1.4.2: uploads happen via the DataTransfer attach API
-                // (POST /downloads/<id>/upload) — no picker. Returning false keeps
-                // headless WebViews from ever launching a system chooser.
-                return false;
+                // v1.4.3: a VISIBLE tab (human handover) launches the real system
+                // file picker via the host TabActivity and delivers the picked URIs
+                // back through onActivityResult -> onFileChooserResult(). Headless
+                // WebViews return false — agents attach files through the DataTransfer
+                // upload API (POST /downloads/<id>/upload) instead, which never needs UI.
+                try {
+                    TabItem t = tabByWebView(wv);
+                    boolean visible = t != null && t.id != null && visibleHost != null
+                            && t.id.equals(visibleTabId) && wv.getParent() != null;
+                    if (!visible) return false;
+                    cancelPendingFileChooser(); // unblock a stale callback first
+                    android.content.Intent i = null;
+                    try { i = params.createIntent(); } catch (Exception ignored) { }
+                    if (i == null) { // site asked for an unmappable accept type
+                        i = new android.content.Intent(android.content.Intent.ACTION_GET_CONTENT);
+                        i.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                        i.setType("*/*");
+                    }
+                    i.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    pendingFileChooser = filePathCallback;
+                    visibleHost.startActivityForResult(i, REQ_FILE_CHOOSER);
+                    log("[" + profileName + "] file chooser launched (tab " + t.id + ")");
+                    return true;
+                } catch (Exception e) {
+                    log("[" + profileName + "] file chooser launch failed: " + e.getMessage());
+                    try { filePathCallback.onReceiveValue(null); } catch (Exception ignored) { }
+                    return false;
+                }
             }
         });
         wv.setDownloadListener((dUrl, dUa, dCd, dMime, dLen) -> {
@@ -1231,6 +1264,7 @@ public class TabEngine {
         String tid = visibleTabId;
         visibleTabId = null;
         visibleRoot = null;
+        cancelPendingFileChooser(); // v1.4.3: going headless cancels a pending picker
         if (tid == null || profileName == null) return;
         List<TabItem> tabs = TABS.get(profileName);
         if (tabs == null) return;
@@ -1248,6 +1282,37 @@ public class TabEngine {
                     } catch (Exception ignored) {
                     }
                 });
+            }
+        }
+    }
+
+    /**
+     * v1.4.3: TabActivity.onActivityResult forwards the system file picker result
+     * here. Fires the pending onShowFileChooser callback with the picked URIs (or
+     * null on cancel/error) so the WebView unblocks future chooser requests.
+     * Main thread.
+     */
+    public static void onFileChooserResult(int requestCode, int resultCode, android.content.Intent data) {
+        if (requestCode != REQ_FILE_CHOOSER) return;
+        android.webkit.ValueCallback<Uri[]> cb = pendingFileChooser;
+        pendingFileChooser = null;
+        if (cb == null) return;
+        Uri[] result = null;
+        try {
+            result = android.webkit.WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        } catch (Exception ignored) {
+        }
+        try { cb.onReceiveValue(result); } catch (Exception ignored) {
+        }
+        log("file chooser result: " + (result == null ? "cancelled" : result.length + " file(s)"));
+    }
+
+    /** v1.4.3: fire a stale pending file-chooser callback with null (cancels it). */
+    private static void cancelPendingFileChooser() {
+        android.webkit.ValueCallback<Uri[]> cb = pendingFileChooser;
+        pendingFileChooser = null;
+        if (cb != null) {
+            try { cb.onReceiveValue(null); } catch (Exception ignored) {
             }
         }
     }
