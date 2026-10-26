@@ -8,8 +8,8 @@ package main
 // JS 动态文本走服务端注入的 I18N 字典 + T(key)
 
 import (
-	"encoding/json"
-	"strings"
+        "encoding/json"
+        "strings"
 )
 
 const settingsTemplate = `<!DOCTYPE html>
@@ -109,7 +109,7 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 </style>
 </head>
 <body>
-<h1>⚙️ %__TITLE__%</h1>
+<h1>⚙️ %__TITLE__% <span style="font-size:13px;color:#a0826d">v%__VER__%</span></h1>
 
 <h2>%__REMOTE_H__%</h2>
 <div class="url-box">
@@ -223,7 +223,7 @@ function copyRemoteUrl() {
   if (!copyableUrl) { showToast(T('urlNotReady')); return; }
   var token = document.getElementById('tokenValue').value;
   var url = copyableUrl + (token && token != '-' ? '?token=' + token : '');
-  navigator.clipboard.writeText(url).then(function(){ showToast(T('copied') + url); });
+  doCopy(url, T('copied') + url);
 }
 
 function copyLanUrl() {
@@ -231,11 +231,27 @@ function copyLanUrl() {
   if (!lan || lan == T('fetching') || lan == T('notStarted')) { showToast(T('urlNotReady')); return; }
   var token = document.getElementById('tokenValue').value;
   var url = lan + (token && token != '-' ? '?token=' + token : '');
-  navigator.clipboard.writeText(url).then(function(){ showToast(T('copied') + url); });
+  doCopy(url, T('copied') + url);
 }
 
 function copyText(t) {
-  navigator.clipboard.writeText(t).then(function(){ showToast(T('copiedShort')); });
+  doCopy(t, T('copiedShort'));
+}
+
+// v1.4.6: clipboard API 不可用/被拒绝时回退 execCommand，两个都失败给明确提示
+function doCopy(text, okMsg) {
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    showToast(ok ? okMsg : T('copyFailHint'));
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function(){ showToast(okMsg); }, fallback);
+  } else { fallback(); }
 }
 
 function refreshStatus() {
@@ -357,67 +373,69 @@ refreshStatus();
 
 // settingsJSDict — 注入到页面的 JS 动态文本字典
 func settingsJSDict() map[string]string {
-	return map[string]string{
-		"saved":          t("sp.jsSaved"),
-		"saveFail":       t("sp.jsSaveFail"),
-		"regenConfirm":   t("sp.jsRegenConfirm"),
-		"regenDone":      t("sp.jsRegenDone"),
-		"namePrompt":     t("sp.jsNamePrompt"),
-		"added":          t("sp.jsAdded"),
-		"addFail":        t("sp.jsAddFail"),
-		"delConfirm":     t("sp.jsDelConfirm"),
-		"delConfirmEnd":  t("sp.jsDelConfirmEnd"),
-		"deleted":        t("sp.jsDeleted"),
-		"urlNotReady":    t("sp.jsUrlNotReady"),
-		"copied":         t("sp.jsCopied"),
-		"copiedShort":    t("sp.jsCopiedShort"),
-		"runningN":       t("sp.jsRunningN"),
-		"profilesN":      t("sp.jsProfilesN"),
-		"stopped":        t("sp.jsStopped"),
-		"connecting":     t("sp.jsConnecting"),
-		"tunnelDisabled": t("sp.tunnelOff"),
-		"svcStopped":     t("sp.jsSvcStopped"),
-		"tunnelOnline":   t("sp.jsTunnelOnline"),
-		"tunnelConn":     t("sp.jsTunnelConn"),
-		"modeSub":        t("sp.jsModeSub"),
-		"modeTemp":       t("sp.jsModeTemp"),
-		"profRunning":    t("sp.jsProfRunning"),
-		"profStopped":    t("sp.jsProfStopped"),
-		"profDisabled":   t("sp.jsProfDisabled"),
-		"delete":         t("sp.jsDelete"),
-		"fetching":       t("sp.fetching"),
-		"notStarted":     t("sp.notStarted"),
-	}
+        return map[string]string{
+                "saved":          t("sp.jsSaved"),
+                "saveFail":       t("sp.jsSaveFail"),
+                "regenConfirm":   t("sp.jsRegenConfirm"),
+                "regenDone":      t("sp.jsRegenDone"),
+                "namePrompt":     t("sp.jsNamePrompt"),
+                "added":          t("sp.jsAdded"),
+                "addFail":        t("sp.jsAddFail"),
+                "delConfirm":     t("sp.jsDelConfirm"),
+                "delConfirmEnd":  t("sp.jsDelConfirmEnd"),
+                "deleted":        t("sp.jsDeleted"),
+                "urlNotReady":    t("sp.jsUrlNotReady"),
+                "copied":         t("sp.jsCopied"),
+                "copiedShort":    t("sp.jsCopiedShort"),
+                "copyFailHint":   t("sp.jsCopyFailHint"),
+                "runningN":       t("sp.jsRunningN"),
+                "profilesN":      t("sp.jsProfilesN"),
+                "stopped":        t("sp.jsStopped"),
+                "connecting":     t("sp.jsConnecting"),
+                "tunnelDisabled": t("sp.tunnelOff"),
+                "svcStopped":     t("sp.jsSvcStopped"),
+                "tunnelOnline":   t("sp.jsTunnelOnline"),
+                "tunnelConn":     t("sp.jsTunnelConn"),
+                "modeSub":        t("sp.jsModeSub"),
+                "modeTemp":       t("sp.jsModeTemp"),
+                "profRunning":    t("sp.jsProfRunning"),
+                "profStopped":    t("sp.jsProfStopped"),
+                "profDisabled":   t("sp.jsProfDisabled"),
+                "delete":         t("sp.jsDelete"),
+                "fetching":       t("sp.fetching"),
+                "notStarted":     t("sp.notStarted"),
+        }
 }
 
 // renderSettingsHTML 按当前语言渲染设置页面
 func renderSettingsHTML() string {
-	dictJSON, err := json.Marshal(settingsJSDict())
-	if err != nil {
-		dictJSON = []byte("{}")
-	}
-	repl := strings.NewReplacer(
-		"%__HTML_LANG__%", string(currentLang),
-		"%__TITLE__%", t("settings.title"),
-		"%__REMOTE_H__%", t("sp.remoteH"),
-		"%__LAN_H__%", t("sp.lanH"),
-		"%__LAN_HINT__%", t("sp.lanHint"),
-		"%__TUNNEL_H__%", t("sp.tunnelH"),
-		"%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
-		"%__KEY_HINT__%", t("sp.keyHint"),
-		"%__CUR_MODE__%", t("sp.curMode"),
-		"%__STATUS_H__%", t("sp.statusH"),
-		"%__TUNNEL_OFF__%", t("sp.tunnelOff"),
-		"%__PROFILES_H__%", t("sp.profilesH"),
-		"%__ADD_PROFILE__%", t("settings.addProfile"),
-		"%__TOKEN_H__%", t("sp.tokenH"),
-		"%__TOKEN_HINT__%", t("sp.tokenHint"),
-		"%__REGEN__%", t("settings.regenerate"),
-		"%__LANG_LABEL__%", t("sp.langLabel"),
-		"%__COPY__%", t("sp.copy"),
-		"%__FETCHING__%", t("sp.fetching"),
-		"%__SAVE_BTN__%", t("sp.saveBtn"),
-		"%__I18N_JSON__%", string(dictJSON),
-	)
-	return repl.Replace(settingsTemplate)
+        dictJSON, err := json.Marshal(settingsJSDict())
+        if err != nil {
+                dictJSON = []byte("{}")
+        }
+        repl := strings.NewReplacer(
+                "%__HTML_LANG__%", string(currentLang),
+                "%__TITLE__%", t("settings.title"),
+                "%__VER__%", appVersion,
+                "%__REMOTE_H__%", t("sp.remoteH"),
+                "%__LAN_H__%", t("sp.lanH"),
+                "%__LAN_HINT__%", t("sp.lanHint"),
+                "%__TUNNEL_H__%", t("sp.tunnelH"),
+                "%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
+                "%__KEY_HINT__%", t("sp.keyHint"),
+                "%__CUR_MODE__%", t("sp.curMode"),
+                "%__STATUS_H__%", t("sp.statusH"),
+                "%__TUNNEL_OFF__%", t("sp.tunnelOff"),
+                "%__PROFILES_H__%", t("sp.profilesH"),
+                "%__ADD_PROFILE__%", t("settings.addProfile"),
+                "%__TOKEN_H__%", t("sp.tokenH"),
+                "%__TOKEN_HINT__%", t("sp.tokenHint"),
+                "%__REGEN__%", t("settings.regenerate"),
+                "%__LANG_LABEL__%", t("sp.langLabel"),
+                "%__COPY__%", t("sp.copy"),
+                "%__FETCHING__%", t("sp.fetching"),
+                "%__SAVE_BTN__%", t("sp.saveBtn"),
+                "%__I18N_JSON__%", string(dictJSON),
+        )
+        return repl.Replace(settingsTemplate)
 }
