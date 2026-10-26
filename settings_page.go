@@ -8,8 +8,8 @@ package main
 // JS 动态文本走服务端注入的 I18N 字典 + T(key)
 
 import (
-        "encoding/json"
-        "strings"
+	"encoding/json"
+	"strings"
 )
 
 const settingsTemplate = `<!DOCTYPE html>
@@ -373,69 +373,69 @@ refreshStatus();
 
 // settingsJSDict — 注入到页面的 JS 动态文本字典
 func settingsJSDict() map[string]string {
-        return map[string]string{
-                "saved":          t("sp.jsSaved"),
-                "saveFail":       t("sp.jsSaveFail"),
-                "regenConfirm":   t("sp.jsRegenConfirm"),
-                "regenDone":      t("sp.jsRegenDone"),
-                "namePrompt":     t("sp.jsNamePrompt"),
-                "added":          t("sp.jsAdded"),
-                "addFail":        t("sp.jsAddFail"),
-                "delConfirm":     t("sp.jsDelConfirm"),
-                "delConfirmEnd":  t("sp.jsDelConfirmEnd"),
-                "deleted":        t("sp.jsDeleted"),
-                "urlNotReady":    t("sp.jsUrlNotReady"),
-                "copied":         t("sp.jsCopied"),
-                "copiedShort":    t("sp.jsCopiedShort"),
-                "copyFailHint":   t("sp.jsCopyFailHint"),
-                "runningN":       t("sp.jsRunningN"),
-                "profilesN":      t("sp.jsProfilesN"),
-                "stopped":        t("sp.jsStopped"),
-                "connecting":     t("sp.jsConnecting"),
-                "tunnelDisabled": t("sp.tunnelOff"),
-                "svcStopped":     t("sp.jsSvcStopped"),
-                "tunnelOnline":   t("sp.jsTunnelOnline"),
-                "tunnelConn":     t("sp.jsTunnelConn"),
-                "modeSub":        t("sp.jsModeSub"),
-                "modeTemp":       t("sp.jsModeTemp"),
-                "profRunning":    t("sp.jsProfRunning"),
-                "profStopped":    t("sp.jsProfStopped"),
-                "profDisabled":   t("sp.jsProfDisabled"),
-                "delete":         t("sp.jsDelete"),
-                "fetching":       t("sp.fetching"),
-                "notStarted":     t("sp.notStarted"),
-        }
+	return map[string]string{
+		"saved":          t("sp.jsSaved"),
+		"saveFail":       t("sp.jsSaveFail"),
+		"regenConfirm":   t("sp.jsRegenConfirm"),
+		"regenDone":      t("sp.jsRegenDone"),
+		"namePrompt":     t("sp.jsNamePrompt"),
+		"added":          t("sp.jsAdded"),
+		"addFail":        t("sp.jsAddFail"),
+		"delConfirm":     t("sp.jsDelConfirm"),
+		"delConfirmEnd":  t("sp.jsDelConfirmEnd"),
+		"deleted":        t("sp.jsDeleted"),
+		"urlNotReady":    t("sp.jsUrlNotReady"),
+		"copied":         t("sp.jsCopied"),
+		"copiedShort":    t("sp.jsCopiedShort"),
+		"copyFailHint":   t("sp.jsCopyFailHint"),
+		"runningN":       t("sp.jsRunningN"),
+		"profilesN":      t("sp.jsProfilesN"),
+		"stopped":        t("sp.jsStopped"),
+		"connecting":     t("sp.jsConnecting"),
+		"tunnelDisabled": t("sp.tunnelOff"),
+		"svcStopped":     t("sp.jsSvcStopped"),
+		"tunnelOnline":   t("sp.jsTunnelOnline"),
+		"tunnelConn":     t("sp.jsTunnelConn"),
+		"modeSub":        t("sp.jsModeSub"),
+		"modeTemp":       t("sp.jsModeTemp"),
+		"profRunning":    t("sp.jsProfRunning"),
+		"profStopped":    t("sp.jsProfStopped"),
+		"profDisabled":   t("sp.jsProfDisabled"),
+		"delete":         t("sp.jsDelete"),
+		"fetching":       t("sp.fetching"),
+		"notStarted":     t("sp.notStarted"),
+	}
 }
 
 // renderSettingsHTML 按当前语言渲染设置页面
 func renderSettingsHTML() string {
-        dictJSON, err := json.Marshal(settingsJSDict())
-        if err != nil {
-                dictJSON = []byte("{}")
-        }
-        repl := strings.NewReplacer(
-                "%__HTML_LANG__%", string(currentLang),
-                "%__TITLE__%", t("settings.title"),
-                "%__VER__%", appVersion,
-                "%__REMOTE_H__%", t("sp.remoteH"),
-                "%__LAN_H__%", t("sp.lanH"),
-                "%__LAN_HINT__%", t("sp.lanHint"),
-                "%__TUNNEL_H__%", t("sp.tunnelH"),
-                "%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
-                "%__KEY_HINT__%", t("sp.keyHint"),
-                "%__CUR_MODE__%", t("sp.curMode"),
-                "%__STATUS_H__%", t("sp.statusH"),
-                "%__TUNNEL_OFF__%", t("sp.tunnelOff"),
-                "%__PROFILES_H__%", t("sp.profilesH"),
-                "%__ADD_PROFILE__%", t("settings.addProfile"),
-                "%__TOKEN_H__%", t("sp.tokenH"),
-                "%__TOKEN_HINT__%", t("sp.tokenHint"),
-                "%__REGEN__%", t("settings.regenerate"),
-                "%__LANG_LABEL__%", t("sp.langLabel"),
-                "%__COPY__%", t("sp.copy"),
-                "%__FETCHING__%", t("sp.fetching"),
-                "%__SAVE_BTN__%", t("sp.saveBtn"),
-                "%__I18N_JSON__%", string(dictJSON),
-        )
-        return repl.Replace(settingsTemplate)
+	dictJSON, err := json.Marshal(settingsJSDict())
+	if err != nil {
+		dictJSON = []byte("{}")
+	}
+	repl := strings.NewReplacer(
+		"%__HTML_LANG__%", string(currentLang),
+		"%__TITLE__%", t("settings.title"),
+		"%__VER__%", appVersion,
+		"%__REMOTE_H__%", t("sp.remoteH"),
+		"%__LAN_H__%", t("sp.lanH"),
+		"%__LAN_HINT__%", t("sp.lanHint"),
+		"%__TUNNEL_H__%", t("sp.tunnelH"),
+		"%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
+		"%__KEY_HINT__%", t("sp.keyHint"),
+		"%__CUR_MODE__%", t("sp.curMode"),
+		"%__STATUS_H__%", t("sp.statusH"),
+		"%__TUNNEL_OFF__%", t("sp.tunnelOff"),
+		"%__PROFILES_H__%", t("sp.profilesH"),
+		"%__ADD_PROFILE__%", t("settings.addProfile"),
+		"%__TOKEN_H__%", t("sp.tokenH"),
+		"%__TOKEN_HINT__%", t("sp.tokenHint"),
+		"%__REGEN__%", t("settings.regenerate"),
+		"%__LANG_LABEL__%", t("sp.langLabel"),
+		"%__COPY__%", t("sp.copy"),
+		"%__FETCHING__%", t("sp.fetching"),
+		"%__SAVE_BTN__%", t("sp.saveBtn"),
+		"%__I18N_JSON__%", string(dictJSON),
+	)
+	return repl.Replace(settingsTemplate)
 }
