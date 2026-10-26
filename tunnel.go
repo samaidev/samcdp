@@ -73,7 +73,12 @@ func (t *Tunnel) start(localPort int, aitunKey string, allowReuse bool) error {
 	cmd := exec.Command(bin, args...)
 	hideCmdWindow(cmd)
 
-	// 隔离 aitun 的工作目录，避免复用 ~/.aitun/auth_token（可能与其它程序冲突）
+	// 隔离 aitun 的工作目录，避免复用 ~/.aitun/auth_token（可能与其它程序冲突）。
+	// v1.4.8: 光设 HOME 在 Windows 上无效 —— 客户端(v4.12.6)不认 HOME/USERPROFILE
+	// 重定向（走 Known-Folder 真实路径 C:\Users\<u>\.aitun\），在本机装有其他
+	// aitun 的机器上会复用别人的身份 → 临时代理拿不到全新地址 / 进 Standby
+	// 挂在别人隧道上。实测客户端尊重 AITUN_HOME（client_id/token 均落
+	// $AITUN_HOME/.aitun/），与 HOME 同值；Linux/macOS HOME 本就有效，此为冗余兜底
 	aitunHome := filepath.Join(configDir(), ".aitun")
 	os.MkdirAll(aitunHome, 0700)
 	// 无 key → 临时代理模式。aitun 服务端保证同一 auth_token 重新绑定到同一地址
@@ -104,8 +109,8 @@ func (t *Tunnel) start(localPort int, aitunKey string, allowReuse bool) error {
 			debugLog("[tunnel] no key, no persisted token — fresh temp-proxy identity")
 		}
 	}
-	cmd.Env = append(os.Environ(), "HOME="+aitunHome)
-	debugLog(fmt.Sprintf("[tunnel] aitun HOME: %s", aitunHome))
+	cmd.Env = append(os.Environ(), "HOME="+aitunHome, "AITUN_HOME="+aitunHome)
+	debugLog(fmt.Sprintf("[tunnel] aitun HOME/AITUN_HOME: %s", aitunHome))
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

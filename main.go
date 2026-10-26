@@ -22,7 +22,7 @@ var (
 )
 
 // appVersion 桌面版版本号（设置页 h1 与 /api/status 暴露，远程排障可识别构建）
-const appVersion = "1.4.7"
+const appVersion = "1.4.8"
 
 func main() {
 	// -settings flag: 直接打开设置页面（用于测试或无桌面环境）
