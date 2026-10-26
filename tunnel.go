@@ -74,11 +74,13 @@ func (t *Tunnel) start(localPort int, aitunKey string, allowReuse bool) error {
 	hideCmdWindow(cmd)
 
 	// 隔离 aitun 的工作目录，避免复用 ~/.aitun/auth_token（可能与其它程序冲突）。
-	// v1.4.8: 光设 HOME 在 Windows 上无效 —— 客户端(v4.12.6)不认 HOME/USERPROFILE
-	// 重定向（走 Known-Folder 真实路径 C:\Users\<u>\.aitun\），在本机装有其他
-	// aitun 的机器上会复用别人的身份 → 临时代理拿不到全新地址 / 进 Standby
-	// 挂在别人隧道上。实测客户端尊重 AITUN_HOME（client_id/token 均落
-	// $AITUN_HOME/.aitun/），与 HOME 同值；Linux/macOS HOME 本就有效，此为冗余兜底
+	// v1.4.8: 客户端(v4.12.6, 纯 Go)的配置目录 = os.UserHomeDir()/.aitun ——
+	// Windows 上读 %USERPROFILE%（HOME/AITUN_HOME 均被忽略，wei 矩阵实测 5/5
+	// 场景落真实路径；USERPROFILE 单独设即生效），unix 上读 $HOME。不隔离的
+	// 后果：本机装有其他 aitun 时会复用别人的 auth_token/client_id → 复用同一
+	// 隧道 → 进 Standby 拿不到地址。因此按平台设置：USERPROFILE 管 Windows、
+	// HOME 管 Linux/macOS（均实测生效），AITUN_HOME 为冗余保留（客户端暂未
+	// 实现，若未来支持则自动生效）
 	aitunHome := filepath.Join(configDir(), ".aitun")
 	os.MkdirAll(aitunHome, 0700)
 	// 无 key → 临时代理模式。aitun 服务端保证同一 auth_token 重新绑定到同一地址
@@ -110,7 +112,11 @@ func (t *Tunnel) start(localPort int, aitunKey string, allowReuse bool) error {
 		}
 	}
 	cmd.Env = append(os.Environ(), "HOME="+aitunHome, "AITUN_HOME="+aitunHome)
-	debugLog(fmt.Sprintf("[tunnel] aitun HOME/AITUN_HOME: %s", aitunHome))
+	if runtime.GOOS == "windows" {
+		// Windows 客户端经 os.UserHomeDir() 只读 %USERPROFILE%（见上）
+		cmd.Env = append(cmd.Env, "USERPROFILE="+aitunHome)
+	}
+	debugLog(fmt.Sprintf("[tunnel] aitun HOME/AITUN_HOME/USERPROFILE: %s (goos=%s)", aitunHome, runtime.GOOS))
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
