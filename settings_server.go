@@ -83,14 +83,26 @@ func handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	oldKey := cfg.GetAitunKey()
 	cfg.SetAitunKey(req.AitunKey)
 	msg := t("settings.saved")
-	// 服务运行中且 Key 变更 → 立即按新 Key 重启隧道（子域名/临时代理自动切换）
-	if svc.IsRunning() && req.AitunKey != oldKey {
-		tunnel.Stop()
-		if err := tunnel.Start(svc.GetCDPPort(), req.AitunKey); err != nil {
-			writeJSON2(w, 200, map[string]interface{}{"ok": true, "msg": t("settings.saved") + t("sp.jsSavedButTunnel") + err.Error()})
-			return
+	// v1.4.9: Key 变更（含清空）→ 必须确定性切换模式：
+	//   有 Key → 子域名；无 Key → 全新临时代理地址。
+	// 原逻辑只在运行中时重启隧道，且从不清理身份：无 key 时客户端会静默
+	// 复用 <23h 的旧 auth_token（可能是其他 aitun 应用写入的注册身份），
+	// 导致“设置里没填 Key，地址却是注册子域名（Subdomain-only）”的困惑。
+	// 现在只要 Key 变了就清掉整个身份目录（client_id/auth_token），
+	// 运行中则立即按新 Key 重启隧道
+	if req.AitunKey != oldKey {
+		wasRunning := svc.IsRunning()
+		if wasRunning {
+			tunnel.Stop()
 		}
-		msg = t("settings.saved") + t("sp.jsSavedTunnel")
+		ClearAitunIdentity()
+		if wasRunning {
+			if err := tunnel.Start(svc.GetCDPPort(), req.AitunKey); err != nil {
+				writeJSON2(w, 200, map[string]interface{}{"ok": true, "msg": t("settings.saved") + t("sp.jsSavedButTunnel") + err.Error()})
+				return
+			}
+			msg = t("settings.saved") + t("sp.jsSavedTunnel")
+		}
 	}
 	writeJSON2(w, 200, map[string]interface{}{"ok": true, "msg": msg})
 }
@@ -131,7 +143,11 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		"lan_url":        svc.GetLocalAddress(),
 		"local_url":      svc.GetCDPAddress(),
 		"aitun_key":      cfg.GetAitunKey(),
-		"profiles":       profiles,
+		// v1.4.9: 模式透明化 —— 身份目录路径（页面提示清理用）+
+		// 是否正在复用持久化身份（解释地址为何不是全新随机地址）
+		"aitun_home":   aitunHomeDir(),
+		"reused_token": tunnel.IsReusingToken(),
+		"profiles":     profiles,
 	})
 }
 

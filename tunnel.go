@@ -32,6 +32,33 @@ type Tunnel struct {
 
 var tunnel = &Tunnel{}
 
+// aitunHomeDir 返回 aitun 客户端的隔离 HOME（samcdp 专用身份目录，
+// Windows 上由 spawn env 的 USERPROFILE 指向，unix 上由 HOME 指向）。
+// v1.4.9: 提为公共助手，设置页展示与身份清理共用同一路径
+func aitunHomeDir() string {
+	return filepath.Join(configDir(), ".aitun")
+}
+
+// ClearAitunIdentity 清除 aitun 客户端持久化身份（client_id / auth_token）。
+// v1.4.9: Key 变更（尤其清空）时必须调用 —— 否则客户端会静默复用旧身份
+// （tunnel.go 原 v1.4.2 逻辑：无 key 且 auth_token < 23h 则复用），导致
+// “设置里没填 Key，地址却是注册子域名（Subdomain-only）”的困惑。
+// 仅在隧道停止后调用；清除后下次启动拿全新身份，地址形态与 Key 设置严格一致
+func ClearAitunIdentity() {
+	idDir := filepath.Join(aitunHomeDir(), ".aitun")
+	if err := os.RemoveAll(idDir); err == nil {
+		debugLog("[tunnel] aitun identity cleared: " + idDir)
+	}
+}
+
+// IsReusingToken 返回当前隧道是否在复用持久化身份（仅临时代理模式）。
+// v1.4.9: 供设置页展示“实际地址形式”时附注，解释地址为何不是全新随机地址
+func (t *Tunnel) IsReusingToken() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.running && t.reusedToken
+}
+
 // Start 启动 aitun 隧道，映射 localPort
 func (t *Tunnel) Start(localPort int, aitunKey string) error {
 	return t.start(localPort, aitunKey, true)
@@ -81,7 +108,7 @@ func (t *Tunnel) start(localPort int, aitunKey string, allowReuse bool) error {
 	// 隧道 → 进 Standby 拿不到地址。因此按平台设置：USERPROFILE 管 Windows、
 	// HOME 管 Linux/macOS（均实测生效），AITUN_HOME 为冗余保留（客户端暂未
 	// 实现，若未来支持则自动生效）
-	aitunHome := filepath.Join(configDir(), ".aitun")
+	aitunHome := aitunHomeDir()
 	os.MkdirAll(aitunHome, 0700)
 	// 无 key → 临时代理模式。aitun 服务端保证同一 auth_token 重新绑定到同一地址
 	// （实测 v4.12.6："Reusing persisted auth_token for stable tunnel URL"，地址 24h 有效），

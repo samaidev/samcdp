@@ -119,6 +119,17 @@ var i18nMap = map[string]map[Lang]string{
 	"sp.jsDelete":         {"zh": "删除", "en": "Delete"},
 	"sp.jsProfilesN":      {"zh": " profiles)", "en": " profiles)"},
 
+	// v1.4.9 模式透明化：实际地址形式 + 与 Key 设置的一致性
+	"sp.liveForm":        {"zh": "实际地址形式：", "en": "Live address form: "},
+	"sp.formPending":     {"zh": "隧道未上线，暂无实际地址", "en": "Tunnel not online — no live address yet"},
+	"sp.formShort":       {"zh": "临时代理短链（aitun.cc/xxxx）", "en": "temp-proxy short URL (aitun.cc/xxxx)"},
+	"sp.formSub":         {"zh": "子域名（固定形式）", "en": "subdomain URL (fixed form)"},
+	"sp.formMatch":       {"zh": "✓ 与 Key 设置一致", "en": "✓ matches the Key setting"},
+	"sp.formMismatch":    {"zh": "⚠ 与 Key 设置不一致", "en": "⚠ does NOT match the Key setting"},
+	"sp.reuseNote":       {"zh": "（正在复用 24h 内的持久化身份，以保证地址稳定）", "en": "(reusing the persisted identity within 24h to keep the URL stable)"},
+	"sp.warnNoKeySub":    {"zh": "未设置 Key，但实际地址是子域名形式：客户端复用了持久化身份（可能是本机其他 aitun 应用写入，或旧身份残留）。地址当前可用；如需全新临时代理地址，请停止程序、删除下面目录中的 .aitun 文件夹后重新启动：", "en": "No Key is set, but the live address is a subdomain URL: the client is reusing a persisted identity (possibly written by another aitun app on this machine, or a stale one). The address works; for a fresh temp-proxy URL, stop the app, delete the .aitun folder inside the directory below, then start again: "},
+	"sp.warnKeySetShort": {"zh": "已设置 Key，但实际地址仍是临时代理短链：隧道可能仍在连接中，或旧身份尚未切换。点击保存会清除旧身份并按 Key 重启隧道。", "en": "A Key is set, but the live address is still a temp-proxy short URL: the tunnel may still be connecting, or a stale identity has not switched yet. Saving clears the stale identity and restarts the tunnel with the Key."},
+
 	// API 文档页 — proxy_docs.go
 	"docs.needAuth":    {"zh": "需要鉴权才能访问", "en": "Authentication required"},
 	"docs.addToken":    {"zh": "在 URL 后添加", "en": "Append to the URL:"},

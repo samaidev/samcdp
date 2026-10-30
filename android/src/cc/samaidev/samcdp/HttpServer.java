@@ -177,7 +177,7 @@ public abstract class HttpServer {
             head.append("Content-Type: ").append(resp.contentType).append("\r\n");
             head.append("Content-Length: ").append(resp.payload.length).append("\r\n");
             head.append("Connection: close\r\n");
-            head.append("Server: samcdp-android/1.4.8\r\n\r\n");
+            head.append("Server: samcdp-android/1.4.9\r\n\r\n");
             out.write(head.toString().getBytes(StandardCharsets.UTF_8));
             out.write(resp.payload);
             out.flush();

@@ -22,7 +22,9 @@ var (
 )
 
 // appVersion 桌面版版本号（设置页 h1 与 /api/status 暴露，远程排障可识别构建）
-const appVersion = "1.4.8"
+// v1.4.9: 模式透明化 —— Key 明文展示、实际地址形式与 Key 设置一致性提示、
+// Key 变更即清除持久化身份（杜绝"没设 Key 却拿到注册子域名地址"）
+const appVersion = "1.4.9"
 
 func main() {
 	// -settings flag: 直接打开设置页面（用于测试或无桌面环境）

@@ -12,7 +12,7 @@ PLAT="$SDK_DIR/android-34"      # platform 34
 OUT=build
 APK_UNALIGNED="$OUT/samcdp-unaligned.apk"
 APK_ALIGNED="$OUT/samcdp-aligned.apk"
-APK_OUT="$OUT/SamCDP-android-v1.4.8.apk"
+APK_OUT="$OUT/SamCDP-android-v1.4.9.apk"
 
 rm -rf "$OUT" gen classes
 mkdir -p "$OUT" gen classes "$OUT/dex"
@@ -23,7 +23,7 @@ echo "[1/6] aapt2 compile+link"
   -I "$PLAT/android.jar" \
   --manifest AndroidManifest.xml \
   --min-sdk-version 26 --target-sdk-version 34 \
-  --version-code 35 --version-name 1.4.8 \
+  --version-code 36 --version-name 1.4.9 \
   --java gen --auto-add-overlay "$OUT/res.zip"
 
 echo "[2/6] ecj compile"
@@ -58,7 +58,13 @@ echo "[5/6] zipalign"
 "$BT/zipalign" -f 4 "$APK_UNALIGNED" "$APK_ALIGNED"
 
 echo "[6/6] sign"
+# v1.4.9: keystore 优先取仓库内 android/samcdp-debug.keystore（提交进 git，
+# CI 与本地构建签名一致、升级安装不断签）；缺失时退回 SDK_DIR 内生成
+REPO_KS="$(cd "$(dirname "$0")" && pwd)/samcdp-debug.keystore"
 KS="$SDK_DIR/samcdp-debug.keystore"   # persistent debug keystore (stable signatures across builds)
+if [ -f "$REPO_KS" ]; then
+  KS="$REPO_KS"
+fi
 if [ ! -f "$KS" ]; then
   keytool -genkeypair -keystore "$KS" -storepass android -keypass android -alias androiddebugkey \
     -dname "CN=Android Debug,O=SamCDP,C=US" -keyalg RSA -keysize 2048 -validity 10000 >/dev/null 2>&1

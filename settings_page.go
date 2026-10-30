@@ -72,6 +72,17 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 .mode-line { margin-top: 8px; font-size: 12px; color: #8b6914; }
 .mode-line b { color: #d2610f; }
+.mode-line .match-badge { margin-left: 6px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+.mode-line .match-badge.ok { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+.mode-line .match-badge.bad { background: #fdecea; color: #c62828; border: 1px solid #ef9a9a; }
+.mode-warning {
+  display: none; margin-top: 8px; padding: 10px 12px; border-radius: 8px;
+  background: #fff8e1; border: 1px solid #ffb74d; color: #b26a00; font-size: 12px; word-break: break-all;
+}
+.mode-warning code {
+  display: block; margin-top: 6px; padding: 6px 8px; border-radius: 6px;
+  background: #fffdf8; border: 1px dashed #deb887; color: #d2610f; font-family: monospace; user-select: all;
+}
 .profile-card {
   padding: 14px; margin-bottom: 10px; border-radius: 10px; background: #fffaf0;
   border: 1px solid #deb887; display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -128,10 +139,14 @@ h2 { font-size: 15px; margin: 20px 0 10px; color: #8b6914; }
 <h2>%__TUNNEL_H__%</h2>
 <div class="field">
   <label>aitun Key</label>
-  <input type="password" id="aitunKey" value="" placeholder="%__KEY_PLACEHOLDER__%">
+  <!-- v1.4.9: 改为明文展示（type=text）——用户必须能确认当前填的是哪个 Key，
+       与“实际地址形式”对照才有意义；本地 127.0.0.1 设置页，无泄露面 -->
+  <input type="text" id="aitunKey" value="" placeholder="%__KEY_PLACEHOLDER__%" spellcheck="false" autocomplete="off">
   <div class="hint">%__KEY_HINT__%</div>
 </div>
 <div class="mode-line">%__CUR_MODE__%<b id="tunnelMode">—</b></div>
+<div class="mode-line">%__LIVE_FORM__%<b id="liveForm">—</b><span class="match-badge" id="formMatch"></span></div>
+<div class="mode-warning" id="modeWarn"></div>
 
 <h2>%__STATUS_H__%</h2>
 <div class="status-bar">
@@ -332,6 +347,49 @@ function refreshStatus() {
       modeEl.textContent = T('modeTemp');
     }
 
+    // v1.4.9: 实际地址形式（由在线 URL 形态判断）+ 与 Key 设置的一致性
+    var formEl = document.getElementById('liveForm');
+    var matchEl = document.getElementById('formMatch');
+    var warnEl = document.getElementById('modeWarn');
+    function urlForm(u) {
+      try {
+        var a = document.createElement('a'); a.href = u;
+        if (a.hostname === 'aitun.cc') return 'short';
+        if (a.hostname.slice(-'.aitun.cc'.length) === '.aitun.cc') return 'sub';
+      } catch (e) {}
+      return 'other';
+    }
+    function resetBadge() { matchEl.textContent = ''; matchEl.className = 'match-badge'; warnEl.style.display = 'none'; }
+    if (!baseUrl) {
+      formEl.textContent = T('formPending');
+      resetBadge();
+    } else {
+      var form = urlForm(baseUrl);
+      var formTxt = form === 'short' ? T('formShort') : (form === 'sub' ? T('formSub') : baseUrl);
+      if (form !== 'other' && d.reused_token) formTxt += ' ' + T('reuseNote');
+      formEl.textContent = formTxt;
+      var expectSub = !!d.aitun_key;
+      if (form === 'other') {
+        resetBadge();
+      } else if ((expectSub && form === 'sub') || (!expectSub && form === 'short')) {
+        matchEl.textContent = T('formMatch'); matchEl.className = 'match-badge ok';
+        warnEl.style.display = 'none';
+      } else {
+        matchEl.textContent = T('formMismatch'); matchEl.className = 'match-badge bad';
+        warnEl.style.display = 'block';
+        if (!expectSub && form === 'sub') {
+          // 未设 Key 却拿到子域名地址 —— 复用了持久化身份，给出确切清理路径
+          warnEl.innerHTML = '';
+          warnEl.appendChild(document.createTextNode(T('warnNoKeySub')));
+          var code = document.createElement('code');
+          code.textContent = (d.aitun_home || '(aitun home)') + ' \\.aitun';
+          warnEl.appendChild(code);
+        } else {
+          warnEl.textContent = T('warnKeySetShort');
+        }
+      }
+    }
+
     // Render profiles
     var list = document.getElementById('profileList');
     list.innerHTML = '';
@@ -424,6 +482,7 @@ func renderSettingsHTML() string {
 		"%__KEY_PLACEHOLDER__%", t("sp.keyPlaceholder"),
 		"%__KEY_HINT__%", t("sp.keyHint"),
 		"%__CUR_MODE__%", t("sp.curMode"),
+		"%__LIVE_FORM__%", t("sp.liveForm"),
 		"%__STATUS_H__%", t("sp.statusH"),
 		"%__TUNNEL_OFF__%", t("sp.tunnelOff"),
 		"%__PROFILES_H__%", t("sp.profilesH"),
