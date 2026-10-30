@@ -198,15 +198,31 @@ See [android/README.md](android/README.md) for details.
 
 ## Download Pre-built Binaries
 
-Download from the [Releases page](https://github.com/samaidev/samcdp/releases):
+Download from the [Releases page](https://github.com/samaidev/samcdp/releases) — every desktop artifact bundles the aitun tunnel client (no separate download needed since v1.4.7):
 
 | Platform | File |
 |----------|------|
-| Windows | `cdpclient-windows-amd64.exe` + `aitun-client-windows-amd64.exe` |
-| Linux | `cdpclient-linux-amd64` + `aitun-client-linux-amd64` |
-| macOS | `cdpclient-darwin-amd64` + `aitun-client-darwin-amd64` |
+| Windows | `samcdp-desktop-v{VER}-windows-amd64.exe` |
+| Linux | `samcdp-desktop-v{VER}-linux-amd64` |
+| macOS (Intel) | `samcdp-desktop-v{VER}-darwin-amd64` |
+| macOS (Apple Silicon) | `samcdp-desktop-v{VER}-darwin-arm64` |
+| Android | `SamCDP-android-v{VER}.apk` |
 
-Place `aitun-client` in the same directory as `cdpclient`, then run `cdpclient`.
+Each release also ships stable-name aliases (`samcdp-windows-amd64.exe`, `samcdp-linux-amd64`, `samcdp-darwin-amd64`, `SamCDP-android.apk`) for scripted installs.
+
+## CI / Releases
+
+GitHub Actions automates builds and releases:
+
+- **CI** (`.github/workflows/ci.yml`) — runs `go vet` + build smoke tests on every push/PR to `main`.
+- **Release** (`.github/workflows/release.yml`) — pushing an annotated tag `v*` builds all artifacts (Windows/Linux/darwin desktop + Android APK) and publishes a GitHub Release automatically:
+
+  ```bash
+  git tag -a v1.4.10 -m "release notes here"
+  git push origin v1.4.10
+  ```
+
+  The tag annotation becomes the release notes (`--notes-from-tag`). `workflow_dispatch` on the Actions page does a build-only dry run. The Android build signs with the committed `android/samcdp-debug.keystore` so upgrades never break signature verification.
 
 ## Build from Source
 

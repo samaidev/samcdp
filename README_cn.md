@@ -197,15 +197,31 @@ SDK_DIR=/path/to/sdk android/build.sh
 
 ## 下载预编译二进制
 
-从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载：
+从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 —— 每个桌面产物都已内嵌 aitun 隧道客户端（v1.4.7 起无需单独下载）：
 
 | 平台 | 文件 |
 |------|------|
-| Windows | `cdpclient-windows-amd64.exe` + `aitun-client-windows-amd64.exe` |
-| Linux | `cdpclient-linux-amd64` + `aitun-client-linux-amd64` |
-| macOS | `cdpclient-darwin-amd64` + `aitun-client-darwin-amd64` |
+| Windows | `samcdp-desktop-v{VER}-windows-amd64.exe` |
+| Linux | `samcdp-desktop-v{VER}-linux-amd64` |
+| macOS（Intel） | `samcdp-desktop-v{VER}-darwin-amd64` |
+| macOS（Apple Silicon） | `samcdp-desktop-v{VER}-darwin-arm64` |
+| Android | `SamCDP-android-v{VER}.apk` |
 
-将 `aitun-client` 放到 `cdpclient` 同目录下，然后运行 `cdpclient` 即可。
+每个 Release 同时附带固定名字的别名文件（`samcdp-windows-amd64.exe`、`samcdp-linux-amd64`、`samcdp-darwin-amd64`、`SamCDP-android.apk`），方便脚本化安装。
+
+## CI / 发布
+
+构建与发布由 GitHub Actions 自动完成：
+
+- **CI**（`.github/workflows/ci.yml`）—— 每次 push / PR 到 `main` 自动跑 `go vet` + 编译冒烟。
+- **发布**（`.github/workflows/release.yml`）—— 推送 annotated tag `v*` 自动构建全部产物（Windows/Linux/darwin 桌面 + Android APK）并创建 GitHub Release：
+
+  ```bash
+  git tag -a v1.4.10 -m "发布说明写在 tag 里"
+  git push origin v1.4.10
+  ```
+
+  tag 注释即发布说明（`--notes-from-tag`）。Actions 页面的 `workflow_dispatch` 可做只构建不发布的干跑。Android 构建使用仓库内 `android/samcdp-debug.keystore` 签名，升级安装不会因签名变化被拒。
 
 ## 从源码编译
 

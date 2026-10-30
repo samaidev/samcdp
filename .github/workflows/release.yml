@@ -1,0 +1,193 @@
+# release.yml — 打 tag v* 自动构建全部发布物并创建 GitHub Release
+#
+# 产物（与 v1.4.7/v1.4.8 命名完全一致，另新增 darwin-arm64）：
+#   samcdp-desktop-v{VER}-windows-amd64.exe   (+ 别名 samcdp-windows-amd64.exe)
+#   samcdp-desktop-v{VER}-linux-amd64         (+ 别名 samcdp-linux-amd64)
+#   samcdp-desktop-v{VER}-darwin-amd64        (+ 别名 samcdp-darwin-amd64)
+#   samcdp-desktop-v{VER}-darwin-arm64        (+ 别名 samcdp-darwin-arm64)   ← 新增
+#   SamCDP-android-v{VER}.apk                 (+ 别名 SamCDP-android.apk)
+#
+# 发布说明写在 annotated tag 里（git tag -a v1.4.9 -m "..."），CI 用 --notes-from-tag 原样发布。
+# 手动 workflow_dispatch 触发时只构建、不发布（干跑）。
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.23.4"
+
+jobs:
+  # ---------- windows + linux：ubuntu runner，CGO=0 交叉编译 ----------
+  desktop:
+    name: desktop (${{ matrix.goos }}-amd64)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: windows, ext: ".exe", gui: "true" }
+          - { goos: linux, ext: "", gui: "false" }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Windows icon/manifest → rsrc_windows.syso
+        if: matrix.goos == 'windows'
+        run: |
+          go run github.com/akavel/rsrc@v0.10.2 \
+            -ico appicon.ico -manifest cdpclient.exe.manifest -arch amd64 \
+            -o rsrc_windows.syso
+          ls -la rsrc_windows.syso
+
+      - name: Build ${{ matrix.goos }}-amd64
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: amd64
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_NAME" = "${V}" ] && V="0.0.0-dispatch" || true   # workflow_dispatch 无 tag 时兜底
+          LDFLAGS="-s -w"
+          [ "${{ matrix.gui }}" = "true" ] && LDFLAGS="$LDFLAGS -H windowsgui"
+          go build -trimpath -ldflags "$LDFLAGS" \
+            -o "samcdp-desktop-v${V}-${{ matrix.goos }}-amd64${{ matrix.ext }}" .
+          cp "samcdp-desktop-v${V}-${{ matrix.goos }}-amd64${{ matrix.ext }}" \
+             "samcdp-${{ matrix.goos }}-amd64${{ matrix.ext }}"
+          ls -la samcdp-*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.goos }}-amd64
+          path: samcdp-*
+          if-no-files-found: error
+
+  # ---------- darwin：macos runner 原生 CGO（托盘必须 CGO，Linux 上无法交叉出可用产物） ----------
+  darwin:
+    name: desktop (darwin)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build darwin-arm64 (native CGO) + darwin-amd64 (cross CGO)
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          [ "$GITHUB_REF_NAME" = "${V}" ] && V="0.0.0-dispatch" || true
+          # apple silicon：原生构建
+          CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" \
+            -o "samcdp-desktop-v${V}-darwin-arm64" .
+          # intel：Apple clang 指定 -arch x86_64 交叉（cgo 走同一工具链）
+          CGO_ENABLED=1 GOARCH=amd64 CC="$(xcrun -f clang) -arch x86_64" \
+            go build -trimpath -ldflags "-s -w" \
+            -o "samcdp-desktop-v${V}-darwin-amd64" .
+          cp "samcdp-desktop-v${V}-darwin-arm64" "samcdp-darwin-arm64"
+          cp "samcdp-desktop-v${V}-darwin-amd64" "samcdp-darwin-amd64"
+          ls -la samcdp-*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-darwin
+          path: samcdp-*
+          if-no-files-found: error
+
+  # ---------- android：aapt2 + ecj + d8 + apksigner（android/build.sh） ----------
+  android:
+    name: android APK
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_BT: "34.0.0"
+      ANDROID_PLAT: "android-34"
+      ECJ_VER: "3.33.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install SDK packages (build-tools 34.0.0 + platform android-34)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "build-tools;${ANDROID_BT}" "platforms;${ANDROID_PLAT}"
+
+      - name: Fetch ECJ (Eclipse compiler, Java 8 source/target compatible)
+        run: |
+          mkdir -p /tmp/sdk
+          curl -fsSL -o /tmp/sdk/ecj.jar \
+            "https://repo1.maven.org/maven2/org/eclipse/jdt/ecj/${ECJ_VER}/ecj-${ECJ_VER}.jar"
+          ls -la /tmp/sdk/ecj.jar
+
+      - name: Assemble SDK_DIR layout expected by android/build.sh
+        run: |
+          ln -sfn "$ANDROID_HOME/build-tools/${ANDROID_BT}" /tmp/sdk/android-14   # 仓库内目录名沿用 android-14 = build-tools 34
+          ln -sfn "$ANDROID_HOME/platforms/${ANDROID_PLAT}" /tmp/sdk/android-34
+          ls -la /tmp/sdk /tmp/sdk/android-14 | head -20
+
+      - name: Build APK (android/build.sh)
+        run: |
+          SDK_DIR=/tmp/sdk bash android/build.sh
+          cp android/build/SamCDP-android-v*.apk /tmp/SamCDP-android.apk
+          ls -la android/build/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            android/build/SamCDP-android-v*.apk
+          if-no-files-found: error
+
+      # 别名单独上传（v{VER} 名由 build.sh 产出，别名固定）
+      - name: Prepare alias artifact
+        run: cp /tmp/SamCDP-android.apk ./SamCDP-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-alias
+          path: SamCDP-android.apk
+          if-no-files-found: error
+
+  # ---------- 发布：汇总全部产物，用 annotated tag 内容作为 Release 说明 ----------
+  release:
+    name: create GitHub Release
+    needs: [desktop, darwin, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -la dist/
+
+      - name: Create Release (notes from annotated tag)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SamCDP $GITHUB_REF_NAME" \
+            --notes-from-tag \
+            --latest
