@@ -190,8 +190,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # 注意：gh 的 --notes-from-tag 与 --repo 互斥（实测报错），
+          # job 运行在仓库上下文，gh 自动从 GITHUB_REPOSITORY 解析仓库，无需 --repo
           gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
             --title "SamCDP $GITHUB_REF_NAME" \
             --notes-from-tag \
             --latest
