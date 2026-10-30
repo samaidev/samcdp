@@ -197,7 +197,7 @@ SDK_DIR=/path/to/sdk android/build.sh
 
 ## 下载预编译二进制
 
-从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 —— 每个桌面产物都已内嵌 aitun 隧道客户端（v1.4.7 起无需单独下载）：
+从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 —— 每个桌面产物都已内嵌 aitun 隧道客户端（v1.4.7 起无需单独下载；darwin/arm64 自 v1.4.10）：
 
 | 平台 | 文件 |
 |------|------|

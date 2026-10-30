@@ -7,7 +7,8 @@
 #   samcdp-darwin-amd64        macOS Intel
 #   samcdp-android.apk         Android（通用）
 #
-# 发布说明写在 annotated tag 里（git tag -a v1.4.9 -m "..."），CI 用 --notes-from-tag 原样发布。
+# Release 页不带文字描述：只有标题 + 资产列表，用户进来直接下载（用户要求）；
+# 变更说明写在 commit message / README。
 # 手动 workflow_dispatch 触发时只构建、不发布（干跑）。
 name: Release
 
@@ -152,17 +153,13 @@ jobs:
           path: samcdp-android.apk
           if-no-files-found: error
 
-  # ---------- 发布：汇总全部产物，用 annotated tag 内容作为 Release 说明 ----------
+  # ---------- 发布：汇总全部产物，创建 Release（纯下载列表，无文字描述） ----------
   release:
     name: create GitHub Release
     needs: [desktop, darwin, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      # --notes-from-tag 需要本地 git 读取 tag 注释（无 checkout 时 gh 报
-      # "fatal: not a git repository"），干跑实测踩坑
-      - uses: actions/checkout@v4
-
       - name: Collect artifacts
         uses: actions/download-artifact@v4
         with:
@@ -172,23 +169,13 @@ jobs:
       - name: List release assets
         run: ls -la dist/
 
-      - name: Create Release (notes from annotated tag via API)
+      # 不带 --notes/--notes-file/--generate-notes：发布页只有标题 + 资产列表，
+      # 用户点进来直接下载；变更说明看 commit message / README
+      - name: Create Release (assets only — no description)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 不用 --notes-from-tag：checkout 的浅克隆会丢失 annotated tag 对象，
-          # gh 回退到 commit message（实测）。改为 API 直读 tag 对象注释；
-          # 轻量 tag（无注释）时回退 --generate-notes
-          TAGSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq '.object.sha')
-          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAGSHA" --jq '.message' > notes.md || true
-          if [ -s notes.md ]; then
-            gh release create "$GITHUB_REF_NAME" dist/* \
-              --title "SamCDP $GITHUB_REF_NAME" \
-              --notes-file notes.md \
-              --latest
-          else
-            gh release create "$GITHUB_REF_NAME" dist/* \
-              --title "SamCDP $GITHUB_REF_NAME" \
-              --generate-notes \
-              --latest
-          fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "SamCDP $GITHUB_REF_NAME" \
+            --latest

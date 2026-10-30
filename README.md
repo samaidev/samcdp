@@ -198,7 +198,7 @@ See [android/README.md](android/README.md) for details.
 
 ## Download Pre-built Binaries
 
-Download from the [Releases page](https://github.com/samaidev/samcdp/releases) — every desktop artifact bundles the aitun tunnel client (no separate download needed since v1.4.7):
+Download from the [Releases page](https://github.com/samaidev/samcdp/releases) — every desktop artifact bundles the aitun tunnel client (no separate download needed; darwin/arm64 since v1.4.10):
 
 | Platform | File |
 |----------|------|
