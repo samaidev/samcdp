@@ -218,7 +218,7 @@ GitHub Actions automates builds and releases:
 - **Release** (`.github/workflows/release.yml`) — pushing an annotated tag `v*` builds all artifacts (Windows/Linux/darwin desktop + Android APK) and publishes a GitHub Release automatically:
 
   ```bash
-  git tag -a v1.4.10 -m "release notes here"
+  git tag -a v1.4.10 --cleanup=verbatim -m "release notes here"   # --cleanup=verbatim keeps "##" heading lines
   git push origin v1.4.10
   ```
 

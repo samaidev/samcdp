@@ -217,7 +217,7 @@ SDK_DIR=/path/to/sdk android/build.sh
 - **发布**（`.github/workflows/release.yml`）—— 推送 annotated tag `v*` 自动构建全部产物（Windows/Linux/darwin 桌面 + Android APK）并创建 GitHub Release：
 
   ```bash
-  git tag -a v1.4.10 -m "发布说明写在 tag 里"
+  git tag -a v1.4.10 --cleanup=verbatim -m "发布说明写在 tag 里"   # --cleanup=verbatim 保留 ## 开头的标题行
   git push origin v1.4.10
   ```
 
