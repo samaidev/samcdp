@@ -190,13 +190,23 @@ jobs:
       - name: List release assets
         run: ls -la dist/
 
-      - name: Create Release (notes from annotated tag)
+      - name: Create Release (notes from annotated tag via API)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 注意：gh 的 --notes-from-tag 与 --repo 互斥（实测报错），
-          # job 运行在仓库上下文，gh 自动从 GITHUB_REPOSITORY 解析仓库，无需 --repo
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "SamCDP $GITHUB_REF_NAME" \
-            --notes-from-tag \
-            --latest
+          # 不用 --notes-from-tag：checkout 的浅克隆会丢失 annotated tag 对象，
+          # gh 回退到 commit message（实测）。改为 API 直读 tag 对象注释；
+          # 轻量 tag（无注释）时回退 --generate-notes
+          TAGSHA=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq '.object.sha')
+          gh api "repos/$GITHUB_REPOSITORY/git/tags/$TAGSHA" --jq '.message' > notes.md || true
+          if [ -s notes.md ]; then
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "SamCDP $GITHUB_REF_NAME" \
+              --notes-file notes.md \
+              --latest
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --title "SamCDP $GITHUB_REF_NAME" \
+              --generate-notes \
+              --latest
+          fi

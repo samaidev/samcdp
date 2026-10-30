@@ -222,7 +222,7 @@ GitHub Actions automates builds and releases:
   git push origin v1.4.10
   ```
 
-  The tag annotation becomes the release notes (`--notes-from-tag`). `workflow_dispatch` on the Actions page does a build-only dry run. The Android build signs with the committed `android/samcdp-debug.keystore` so upgrades never break signature verification.
+  The tag annotation becomes the release notes (read from the tag object via API). `workflow_dispatch` on the Actions page does a build-only dry run. The Android build signs with the committed `android/samcdp-debug.keystore` so upgrades never break signature verification.
 
 ## Build from Source
 

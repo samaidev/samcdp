@@ -221,7 +221,7 @@ SDK_DIR=/path/to/sdk android/build.sh
   git push origin v1.4.10
   ```
 
-  tag 注释即发布说明（`--notes-from-tag`）。Actions 页面的 `workflow_dispatch` 可做只构建不发布的干跑。Android 构建使用仓库内 `android/samcdp-debug.keystore` 签名，升级安装不会因签名变化被拒。
+  tag 注释即发布说明（CI 通过 API 读取 tag 对象注释）。Actions 页面的 `workflow_dispatch` 可做只构建不发布的干跑。Android 构建使用仓库内 `android/samcdp-debug.keystore` 签名，升级安装不会因签名变化被拒。
 
 ## 从源码编译
 
