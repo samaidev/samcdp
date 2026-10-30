@@ -146,7 +146,7 @@ print(resp.json())
 
 ### Install
 
-Download `SamCDP-android-vX.Y.Z-debug.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (requires Android 8.0+ / API 26), sideload it (allow "install unknown apps"), open the app and tap **Run**. The app auto-starts the API server and shows its URL + token on screen.
+Download `samcdp-android.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (requires Android 8.0+ / API 26), sideload it (allow "install unknown apps"), open the app and tap **Run**. The app auto-starts the API server and shows its URL + token on screen.
 
 > MIUI/HyperOS note: enable Developer options → "Install via USB" when installing over `adb`.
 
@@ -202,13 +202,13 @@ Download from the [Releases page](https://github.com/samaidev/samcdp/releases) �
 
 | Platform | File |
 |----------|------|
-| Windows | `samcdp-desktop-v{VER}-windows-amd64.exe` |
-| Linux | `samcdp-desktop-v{VER}-linux-amd64` |
-| macOS (Intel) | `samcdp-desktop-v{VER}-darwin-amd64` |
-| macOS (Apple Silicon) | `samcdp-desktop-v{VER}-darwin-arm64` |
-| Android | `SamCDP-android-v{VER}.apk` |
+| Windows | `samcdp-windows-amd64.exe` |
+| Linux | `samcdp-linux-amd64` |
+| macOS (Intel) | `samcdp-darwin-amd64` |
+| macOS (Apple Silicon) | `samcdp-darwin-arm64` |
+| Android | `samcdp-android.apk` |
 
-Each release also ships stable-name aliases (`samcdp-windows-amd64.exe`, `samcdp-linux-amd64`, `samcdp-darwin-amd64`, `SamCDP-android.apk`) for scripted installs.
+One file per platform with a fixed name — no version in the filename (the version is the Release tag), no duplicate/alias assets.
 
 ## CI / Releases
 

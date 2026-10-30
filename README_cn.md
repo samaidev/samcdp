@@ -145,7 +145,7 @@ print(resp.json())
 
 ### 安装
 
-从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 `SamCDP-android-vX.Y.Z-debug.apk`（需要 Android 8.0+ / API 26），允许"安装未知应用"后侧载安装，打开 App 点击**运行**。App 会自动启动 API 服务器，并在界面上显示访问地址和 Token。
+从 [Releases 页面](https://github.com/samaidev/samcdp/releases) 下载 `samcdp-android.apk`（需要 Android 8.0+ / API 26），允许"安装未知应用"后侧载安装，打开 App 点击**运行**。App 会自动启动 API 服务器，并在界面上显示访问地址和 Token。
 
 > MIUI/HyperOS 提示：如通过 `adb` 安装，需在开发者选项中开启"USB 安装"。
 
@@ -201,13 +201,13 @@ SDK_DIR=/path/to/sdk android/build.sh
 
 | 平台 | 文件 |
 |------|------|
-| Windows | `samcdp-desktop-v{VER}-windows-amd64.exe` |
-| Linux | `samcdp-desktop-v{VER}-linux-amd64` |
-| macOS（Intel） | `samcdp-desktop-v{VER}-darwin-amd64` |
-| macOS（Apple Silicon） | `samcdp-desktop-v{VER}-darwin-arm64` |
-| Android | `SamCDP-android-v{VER}.apk` |
+| Windows | `samcdp-windows-amd64.exe` |
+| Linux | `samcdp-linux-amd64` |
+| macOS（Intel） | `samcdp-darwin-amd64` |
+| macOS（Apple Silicon） | `samcdp-darwin-arm64` |
+| Android | `samcdp-android.apk` |
 
-每个 Release 同时附带固定名字的别名文件（`samcdp-windows-amd64.exe`、`samcdp-linux-amd64`、`samcdp-darwin-amd64`、`SamCDP-android.apk`），方便脚本化安装。
+一个平台一个文件，文件名固定不带版本号（版本看 Release tag），没有重复/别名文件。
 
 ## CI / 发布
 

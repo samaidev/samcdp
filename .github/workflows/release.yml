@@ -1,11 +1,11 @@
 # release.yml — 打 tag v* 自动构建全部发布物并创建 GitHub Release
 #
-# 产物（与 v1.4.7/v1.4.8 命名完全一致，另新增 darwin-arm64）：
-#   samcdp-desktop-v{VER}-windows-amd64.exe   (+ 别名 samcdp-windows-amd64.exe)
-#   samcdp-desktop-v{VER}-linux-amd64         (+ 别名 samcdp-linux-amd64)
-#   samcdp-desktop-v{VER}-darwin-amd64        (+ 别名 samcdp-darwin-amd64)
-#   samcdp-desktop-v{VER}-darwin-arm64        (+ 别名 samcdp-darwin-arm64)   ← 新增
-#   SamCDP-android-v{VER}.apk                 (+ 别名 SamCDP-android.apk)
+# 产物命名：一个平台一个文件，固定名、不带版本号（版本看 Release tag）、无别名：
+#   samcdp-windows-amd64.exe   Windows x64
+#   samcdp-linux-amd64         Linux x64
+#   samcdp-darwin-arm64        macOS Apple Silicon
+#   samcdp-darwin-amd64        macOS Intel
+#   samcdp-android.apk         Android（通用）
 #
 # 发布说明写在 annotated tag 里（git tag -a v1.4.9 -m "..."），CI 用 --notes-from-tag 原样发布。
 # 手动 workflow_dispatch 触发时只构建、不发布（干跑）。
@@ -59,14 +59,10 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: amd64
         run: |
-          V="${GITHUB_REF_NAME#v}"
-          [ "$GITHUB_REF_NAME" = "${V}" ] && V="0.0.0-dispatch" || true   # workflow_dispatch 无 tag 时兜底
           LDFLAGS="-s -w"
           [ "${{ matrix.gui }}" = "true" ] && LDFLAGS="$LDFLAGS -H windowsgui"
           go build -trimpath -ldflags "$LDFLAGS" \
-            -o "samcdp-desktop-v${V}-${{ matrix.goos }}-amd64${{ matrix.ext }}" .
-          cp "samcdp-desktop-v${V}-${{ matrix.goos }}-amd64${{ matrix.ext }}" \
-             "samcdp-${{ matrix.goos }}-amd64${{ matrix.ext }}"
+            -o "samcdp-${{ matrix.goos }}-amd64${{ matrix.ext }}" .
           ls -la samcdp-*
 
       - uses: actions/upload-artifact@v4
@@ -93,17 +89,13 @@ jobs:
 
       - name: Build darwin-arm64 (native CGO) + darwin-amd64 (cross CGO)
         run: |
-          V="${GITHUB_REF_NAME#v}"
-          [ "$GITHUB_REF_NAME" = "${V}" ] && V="0.0.0-dispatch" || true
           # apple silicon：原生构建
           CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" \
-            -o "samcdp-desktop-v${V}-darwin-arm64" .
+            -o samcdp-darwin-arm64 .
           # intel：Apple clang 指定 -arch x86_64 交叉（cgo 走同一工具链，同一 SDK）
           CGO_ENABLED=1 GOARCH=amd64 CC="$(xcrun -f clang) -arch x86_64" \
             go build -trimpath -ldflags "-s -w" \
-            -o "samcdp-desktop-v${V}-darwin-amd64" .
-          cp "samcdp-desktop-v${V}-darwin-arm64" "samcdp-darwin-arm64"
-          cp "samcdp-desktop-v${V}-darwin-amd64" "samcdp-darwin-amd64"
+            -o samcdp-darwin-amd64 .
           ls -la samcdp-*
 
       - uses: actions/upload-artifact@v4
@@ -150,24 +142,14 @@ jobs:
       - name: Build APK (android/build.sh)
         run: |
           SDK_DIR=/tmp/sdk bash android/build.sh
-          cp android/build/SamCDP-android-v*.apk /tmp/SamCDP-android.apk
-          ls -la android/build/
+          # 统一资产名：samcdp-android.apk（一个平台一个文件，不带版本号）
+          cp android/build/SamCDP-android-v*.apk samcdp-android.apk
+          ls -la android/build/ samcdp-android.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: |
-            android/build/SamCDP-android-v*.apk
-          if-no-files-found: error
-
-      # 别名单独上传（v{VER} 名由 build.sh 产出，别名固定）
-      - name: Prepare alias artifact
-        run: cp /tmp/SamCDP-android.apk ./SamCDP-android.apk
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-apk-alias
-          path: SamCDP-android.apk
+          path: samcdp-android.apk
           if-no-files-found: error
 
   # ---------- 发布：汇总全部产物，用 annotated tag 内容作为 Release 说明 ----------

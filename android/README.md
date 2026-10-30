@@ -22,7 +22,7 @@ Android (APK) version of [SamCDP](../README.md) — turn an Android phone into a
 
 ## Install
 
-1. Grab `SamCDP-android-vX.Y.Z-debug.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (Android 8.0+ / API 26)
+1. Grab `samcdp-android.apk` from the [Releases page](https://github.com/samaidev/samcdp/releases) (Android 8.0+ / API 26)
 2. Sideload: allow "install unknown apps" for your file manager/browser
    - MIUI/HyperOS: also enable Developer options → "Install via USB" if installing over `adb`
 3. Open SamCDP → tap **Run** (auto-runs on launch)
