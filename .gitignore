@@ -5,6 +5,9 @@ cdpclient-linux-amd64
 *.exe
 *.syso
 
+# v1.4.9: 内嵌的 aitun 客户端必须进仓库（go:embed，CI checkout 无它则编译失败）
+!aitunbin/*.exe
+
 # aitun client binaries
 aitun-client
 aitun-client.exe

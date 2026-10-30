@@ -59,8 +59,11 @@ echo "[5/6] zipalign"
 
 echo "[6/6] sign"
 # v1.4.9: keystore 优先取仓库内 android/samcdp-debug.keystore（提交进 git，
-# CI 与本地构建签名一致、升级安装不断签）；缺失时退回 SDK_DIR 内生成
-REPO_KS="$(cd "$(dirname "$0")" && pwd)/samcdp-debug.keystore"
+# CI 与本地构建签名一致、升级安装不断签）；缺失时退回 SDK_DIR 内生成。
+# 注意：脚本开头已 cd "$(dirname "$0")" 进入本目录，此处直接 pwd；
+# 不能再用 dirname "$0"（CI 里以 `bash android/build.sh` 调用时 $0 带目录前缀，
+# 二次 cd 会失败并被 set -e 终止——CI 干跑实测踩坑）
+REPO_KS="$(pwd)/samcdp-debug.keystore"
 KS="$SDK_DIR/samcdp-debug.keystore"   # persistent debug keystore (stable signatures across builds)
 if [ -f "$REPO_KS" ]; then
   KS="$REPO_KS"

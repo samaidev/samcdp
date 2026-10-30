@@ -87,6 +87,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # runner 默认 shell 未导出 SDKROOT，cgo 编译 runtime/cgo 时找不到 stdlib.h（干跑实测）
+      - name: Export macOS SDK root
+        run: echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
+
       - name: Build darwin-arm64 (native CGO) + darwin-amd64 (cross CGO)
         run: |
           V="${GITHUB_REF_NAME#v}"
@@ -94,7 +98,7 @@ jobs:
           # apple silicon：原生构建
           CGO_ENABLED=1 go build -trimpath -ldflags "-s -w" \
             -o "samcdp-desktop-v${V}-darwin-arm64" .
-          # intel：Apple clang 指定 -arch x86_64 交叉（cgo 走同一工具链）
+          # intel：Apple clang 指定 -arch x86_64 交叉（cgo 走同一工具链，同一 SDK）
           CGO_ENABLED=1 GOARCH=amd64 CC="$(xcrun -f clang) -arch x86_64" \
             go build -trimpath -ldflags "-s -w" \
             -o "samcdp-desktop-v${V}-darwin-amd64" .
