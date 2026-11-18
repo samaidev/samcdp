@@ -17,7 +17,9 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=dist
-#ifndef OutputBaseFilename
+#ifdef OutputBaseFilename
+OutputBaseFilename={#OutputBaseFilename}
+#else
 OutputBaseFilename=CDPClient-Setup-{#MyAppVersion}
 #endif
 SetupIconFile=appicon.ico
