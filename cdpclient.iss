@@ -2,7 +2,9 @@
 ; Build: iscc.exe cdpclient.iss
 
 #define MyAppName "CDP Client"
+#ifndef MyAppVersion
 #define MyAppVersion "1.0.0"
+#endif
 #define MyAppPublisher "AIWeber2"
 #define MyAppExeName "cdpclient.exe"
 
@@ -15,7 +17,9 @@ DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=dist
+#ifndef OutputBaseFilename
 OutputBaseFilename=CDPClient-Setup-{#MyAppVersion}
+#endif
 SetupIconFile=appicon.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -25,7 +29,11 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ArchitecturesAllowed=x64compatible
 
 [Languages]
+#ifdef CnMessages
+Name: "chinesesimp"; MessagesFile: "{#CnMessages}"
+#else
 Name: "chinesesimp"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+#endif
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

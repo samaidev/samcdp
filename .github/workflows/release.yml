@@ -156,7 +156,7 @@ jobs:
   # ---------- 发布：汇总全部产物，创建 Release（纯下载列表，无文字描述） ----------
   release:
     name: create GitHub Release
-    needs: [desktop, darwin, android]
+    needs: [desktop, darwin, android, installer]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -179,3 +179,119 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "SamCDP $GITHUB_REF_NAME" \
             --latest
+
+  # ---------- windows 安装包：Inno Setup 打包 samcdp-windows-amd64.exe ----------
+  installer:
+    name: windows setup.exe (Inno Setup)
+    needs: [desktop]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download windows exe artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: desktop-windows-amd64
+          path: exe
+
+      - name: Stage files for ISCC
+        shell: pwsh
+        run: |
+          Copy-Item exe/samcdp-windows-amd64.exe cdpclient.exe
+          Get-Item cdpclient.exe | Select-Object Name, Length
+
+      - name: Locate Inno Setup (ISCC)
+        id: iscc
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            Write-Host "ISCC not found, installing via Chocolatey..."
+            choco install innosetup -y --no-progress
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found at $iscc" }
+          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Resolve Chinese language file
+        id: cnisl
+        shell: pwsh
+        run: |
+          $innoDir = Split-Path "${{ steps.iscc.outputs.path }}"
+          $found = Get-ChildItem -Path $innoDir -Recurse -Filter "ChineseSimplified.isl" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) {
+            $cn = $found.FullName
+          } else {
+            $cn = Join-Path $env:RUNNER_TEMP "ChineseSimplified.isl"
+            $urls = @(
+              "https://raw.githubusercontent.com/jrsoftware/issrc/is-6_4_1/Files/Languages/Unofficial/ChineseSimplified.isl",
+              "https://raw.githubusercontent.com/jrsoftware/issrc/is-7_1_1/Files/Languages/ChineseSimplified.isl"
+            )
+            $ok = $false
+            foreach ($u in $urls) {
+              try { Invoke-WebRequest -Uri $u -OutFile $cn; $ok = $true; break } catch { Write-Host "miss: $u" }
+            }
+            if (-not $ok) { throw "Cannot obtain ChineseSimplified.isl" }
+          }
+          "path=$cn" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Build setup.exe (Inno Setup)
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          & "${{ steps.iscc.outputs.path }}" "/DMyAppVersion=$v" "/DCnMessages=${{ steps.cnisl.outputs.path }}" "/DOutputBaseFilename=SamCDP-$v-windows-amd64-setup.exe" /Q cdpclient.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed with $LASTEXITCODE" }
+          Get-ChildItem dist | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*.exe
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Mirror release artifacts to ModelScope + HuggingFace and update the unified
+  # catalog (samaidev/samai-releases). Tag pushes only, after Release job.
+  # ---------------------------------------------------------------------------
+  mirror-catalog:
+    name: Mirror (MS/HF) + update catalog
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: [release]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install upload SDKs
+        run: pip install huggingface_hub modelscope
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --dir assets --repo "$GITHUB_REPOSITORY"
+          ls -lh assets
+
+      - name: Fetch current catalog (single source of truth)
+        run: |
+          curl -fsSL -o catalog.json \
+            https://raw.githubusercontent.com/samaidev/samai-releases/main/catalog.json
+
+      - name: Mirror to MS/HF + update catalog
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MS_TOKEN: ${{ secrets.MS_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          python ci/publish_channels.py \
+            --dist assets --product samcdp --version "$GITHUB_REF_NAME" \
+            --repo samaidev/samcdp --catalog catalog.json \
+            --glob "samcdp"
