@@ -24,7 +24,7 @@ var (
 // appVersion 桌面版版本号（设置页 h1 与 /api/status 暴露，远程排障可识别构建）
 // v1.4.10: darwin/arm64 补内嵌 aitun 客户端（v1.4.7 仅 darwin/amd64 有，arm64
 // 靠 PATH/aitun.cc 下载回退）；全部回退失败时的提示附带 pip install aitun 指引
-const appVersion = "1.4.10"
+const appVersion = "1.4.12"
 
 func main() {
         // -settings flag: 直接打开设置页面（用于测试或无桌面环境）

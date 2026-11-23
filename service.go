@@ -231,6 +231,15 @@ func (s *Service) stopProfileByName(name string) error {
 }
 
 // monitorChrome 监控 Chrome 进程，用户关闭后自动重启（最多重试 2 次，不无限循环）
+//
+// 新版 Chrome（137+）行为变化：启动后主进程 fork 出子进程接管调试端口，
+// 然后主进程立即退出。这会导致 cmd.Wait() 很快返回，但 Chrome 实际仍在运行。
+// 如果此时盲目重启，会在旧实例仍存活的情况下不断打开新窗口，形成无限堆积。
+//
+// 修复策略：cmd.Wait() 返回后，先用 isCDPPortAlive 检查调试端口是否仍然存活。
+// 如果端口活着 → Chrome 实际在运行（fork 行为），切换到端口轮询模式，
+//   定期检查端口活性，直到端口真正消失才触发重启。
+// 如果端口死了 → Chrome 确实退出了，走正常重启流程。
 func (s *Service) monitorChrome(inst *ProfileInstance) {
 	retries := 0
 	maxRetries := 2
@@ -252,6 +261,19 @@ func (s *Service) monitorChrome(inst *ProfileInstance) {
 			return
 		}
 		inst.mu.Unlock()
+
+		// Chrome 主进程退出了。检查 CDP 调试端口是否仍然存活。
+		if isCDPPortAlive(inst.port) {
+			// 新版 Chrome fork 行为：主进程退出但子进程仍在运行。
+			// 切换到端口轮询模式，避免盲目重启导致窗口堆积。
+			debugLog(fmt.Sprintf("[service] profile %s: launcher process exited but CDP port %d still alive (Chrome 137+ fork behavior), switching to port polling", inst.name, inst.port))
+			if s.pollCDPPort(inst) {
+				// 端口轮询期间 inst.stopCh 被关闭，正常退出
+				return
+			}
+			// 端口消失了，Chrome 真正退出了，继续走重启流程
+			debugLog(fmt.Sprintf("[service] profile %s: CDP port no longer alive, chrome truly exited", inst.name))
+		}
 
 		// Chrome 退出了，检查是否达到最大重试次数
 		if retries >= maxRetries {
@@ -280,6 +302,31 @@ func (s *Service) monitorChrome(inst *ProfileInstance) {
 			inst.chromeCmd = cmd
 		}
 		inst.mu.Unlock()
+	}
+}
+
+// pollCDPPort 在 Chrome 主进程退出后（fork 行为），通过定期检查 CDP 端口
+// 来监控 Chrome 是否仍然存活。返回 true 表示 stopCh 被关闭（应停止监控），
+// 返回 false 表示端口已消失（Chrome 真正退出了，调用方可决定是否重启）。
+func (s *Service) pollCDPPort(inst *ProfileInstance) bool {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-inst.stopCh:
+			return true
+		case <-ticker.C:
+			inst.mu.Lock()
+			running := inst.running
+			inst.mu.Unlock()
+			if !running {
+				return true
+			}
+			if !isCDPPortAlive(inst.port) {
+				return false // 端口消失，Chrome 退出了
+			}
+			// 端口仍然存活，Chrome 在运行，继续轮询
+		}
 	}
 }
 

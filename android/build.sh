@@ -23,7 +23,7 @@ echo "[1/6] aapt2 compile+link"
   -I "$PLAT/android.jar" \
   --manifest AndroidManifest.xml \
   --min-sdk-version 26 --target-sdk-version 34 \
-  --version-code 37 --version-name 1.4.10 \
+  --version-code 38 --version-name 1.4.12 \
   --java gen --auto-add-overlay "$OUT/res.zip"
 
 echo "[2/6] ecj compile"

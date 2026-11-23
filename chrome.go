@@ -119,7 +119,36 @@ func setupChromePolicyNoSandboxWarning() {
 func killChromeOnPort(port int) {
 	var pids []string
 
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "windows" {
+		// Windows: 用 netstat 查找占用端口的进程，再 taskkill
+		out, err := exec.Command("netstat", "-ano", "-p", "tcp").Output()
+		if err != nil {
+			return
+		}
+		// 解析 netstat 输出，查找 LISTENING 状态且端口匹配的行
+		// 行格式: "  TCP    127.0.0.1:9334    0.0.0.0:0    LISTENING    12345"
+		lookup := fmt.Sprintf(":%d", port)
+		for _, line := range strings.Split(string(out), "\n") {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "TCP") {
+				continue
+			}
+			if !strings.Contains(line, "LISTENING") {
+				continue
+			}
+			fields := strings.Fields(line)
+			if len(fields) < 5 {
+				continue
+			}
+			// fields[1] = "127.0.0.1:9334"
+			if strings.HasSuffix(fields[1], lookup) {
+				pids = append(pids, fields[4])
+			}
+		}
+		if len(pids) == 0 {
+			return
+		}
+	} else if runtime.GOOS == "darwin" {
 		// macOS: 用 lsof 查找占用端口的进程
 		out, err := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port)).Output()
 		if err != nil || len(out) == 0 {
@@ -138,11 +167,33 @@ func killChromeOnPort(port int) {
 
 	for _, pidStr := range pids {
 		if pid, err := parsePid(pidStr); err == nil {
-			exec.Command("kill", "-9", fmt.Sprintf("%d", pid)).Run()
+			killProcessByPid(pid)
 			debugLog(fmt.Sprintf("[chrome] killed old process %d on port %d", pid, port))
 		}
 	}
 	time.Sleep(1 * time.Second) // 等待端口释放
+}
+
+// killProcessByPid 跨平台杀进程
+func killProcessByPid(pid int) {
+	if runtime.GOOS == "windows" {
+		exec.Command("taskkill", "/F", "/PID", fmt.Sprintf("%d", pid)).Run()
+	} else {
+		exec.Command("kill", "-9", fmt.Sprintf("%d", pid)).Run()
+	}
+}
+
+// isCDPPortAlive 检查 Chrome 的远程调试端口是否仍然可响应。
+// 新版 Chrome（137+）启动后主进程会立即退出（fork 出子进程接管调试端口），
+// 导致 cmd.Wait() 误判 Chrome 已退出。此函数通过请求 /json/version
+// 来确认 Chrome 实例是否真正存活。
+func isCDPPortAlive(port int) bool {
+	resp, err := httpClient.Get(fmt.Sprintf("http://127.0.0.1:%d/json/version", port))
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == 200
 }
 
 // cleanupAllChrome 杀掉所有残留的 Chrome 进程（启动前调用）
