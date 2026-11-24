@@ -43,7 +43,11 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "开机启动"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
+#ifexist "samcdp.exe"
 Source: "samcdp.exe"; DestDir: "{app}"; Flags: ignoreversion
+#else
+Source: "cdpclient.exe"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 Source: "appicon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "aitun-client.exe"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
