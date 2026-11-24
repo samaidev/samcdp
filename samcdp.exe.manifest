@@ -2,10 +2,10 @@
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity
     type="win32"
-    name="CDPClient"
+    name="SamCDP"
     version="1.0.0.0"
   />
-  <description>CDP Client - Chrome DevTools Protocol Tunnel</description>
+  <description>SamCDP - Chrome DevTools Protocol Tunnel</description>
   <!-- DPI awareness -->
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>

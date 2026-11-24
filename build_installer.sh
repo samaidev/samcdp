@@ -5,7 +5,7 @@
 
 set -e
 
-echo "=== CDP Client Installer Build ==="
+echo "=== SamCDP Installer Build ==="
 
 # 切换到脚本目录
 cd "$(dirname "$0")"
@@ -16,19 +16,19 @@ echo "Working dir: $SCRIPT_DIR"
 LDFLAGS="-H windowsgui"
 echo ""
 echo "[1/4] Building Go binary..."
-go build -ldflags "$LDFLAGS" -o cdpclient.exe .
-echo "  -> cdpclient.exe built"
+go build -ldflags "$LDFLAGS" -o samcdp.exe .
+echo "  -> samcdp.exe built"
 
 # 2. 嵌入图标和 manifest
 echo ""
 echo "[2/4] Embedding icon and manifest..."
 if command -v rsrc &>/dev/null; then
-    rsrc -ico appicon.ico -manifest cdpclient.exe.manifest -o rsrc_windows.syso
-    go build -ldflags "$LDFLAGS" -o cdpclient.exe .
+    rsrc -ico appicon.ico -manifest samcdp.exe.manifest -o rsrc_windows.syso
+    go build -ldflags "$LDFLAGS" -o samcdp.exe .
     echo "  -> Icon embedded via rsrc"
 elif command -v windres &>/dev/null; then
-    windres -o rsrc_windows.syso cdpclient.rc
-    go build -ldflags "$LDFLAGS" -o cdpclient.exe .
+    windres -o rsrc_windows.syso samcdp.rc
+    go build -ldflags "$LDFLAGS" -o samcdp.exe .
     echo "  -> Icon embedded via windres"
 else
     echo "  WARNING: rsrc/windres not found, using external appicon.ico"
@@ -67,7 +67,7 @@ if [ -z "$ISCC" ]; then
 fi
 
 mkdir -p dist
-"$ISCC" cdpclient.iss
+"$ISCC" samcdp.iss
 echo "  -> Installer built in dist/"
 
 # 完成

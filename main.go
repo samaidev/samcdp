@@ -45,7 +45,7 @@ func main() {
 
         // Linux 无桌面环境检测: 如果没有 DISPLAY，直接进入 headless 服务模式
         if runtime.GOOS == "linux" && os.Getenv("DISPLAY") == "" {
-                fmt.Println("[cdpclient] No DISPLAY detected, running in headless service mode")
+                fmt.Println("[samcdp] No DISPLAY detected, running in headless service mode")
                 initConfig()
                 ensureAitunBinary()
                 if err := svc.Start(); err != nil {
@@ -102,7 +102,7 @@ func onTrayReady() {
                 if err := svc.Start(); err != nil {
                         fmt.Fprintf(os.Stderr, "auto start service error: %v\n", err)
                 } else {
-                        fmt.Println("[cdpclient] service auto-started")
+                        fmt.Println("[samcdp] service auto-started")
                 }
                 refreshMenuState()
         }()

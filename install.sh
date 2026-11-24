@@ -4,7 +4,7 @@
 set -e
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/samcdp}"
-CONFIG_DIR="${HOME}/.config/cdpclient"
+CONFIG_DIR="${HOME}/.config/samcdp"
 
 echo "╔══════════════════════════════════════╗"
 echo "║      SamCDP Installer (Linux)        ║"
@@ -44,8 +44,8 @@ echo ""
 echo "[3/5] Building SamCDP..."
 mkdir -p "${INSTALL_DIR}"
 cd /tmp/samcdp-src
-CGO_ENABLED=0 go build -o "${INSTALL_DIR}/cdpclient" .
-echo "✓ Built: ${INSTALL_DIR}/cdpclient"
+CGO_ENABLED=0 go build -o "${INSTALL_DIR}/samcdp" .
+echo "✓ Built: ${INSTALL_DIR}/samcdp"
 
 # 4. Download aitun-client
 echo ""
@@ -90,12 +90,12 @@ echo "════════════════════════�
 echo "✅ SamCDP installed successfully!"
 echo "════════════════════════════════════════"
 echo ""
-echo "Binary:     ${INSTALL_DIR}/cdpclient"
+echo "Binary:     ${INSTALL_DIR}/samcdp"
 echo "Config:     ${CONFIG_DIR}/config.json"
 echo ""
 echo "Next steps:"
 echo "  1. Edit config.json and add your aitun key"
 echo "  2. Set DISPLAY if running in a desktop environment:"
 echo "     export DISPLAY=:1"
-echo "  3. Run: ${INSTALL_DIR}/cdpclient"
+echo "  3. Run: ${INSTALL_DIR}/samcdp"
 echo ""

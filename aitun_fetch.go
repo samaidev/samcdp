@@ -176,6 +176,6 @@ func fetchAitunBinary() (string, error) {
 // 把原因写入设置页错误行）
 func ensureAitunBinary() {
 	if _, err := resolveAitunBinary(); err != nil {
-		fmt.Fprintf(os.Stderr, "[cdpclient] aitun client unavailable: %v (tunnel start will retry)\n", err)
+		fmt.Fprintf(os.Stderr, "[samcdp] aitun client unavailable: %v (tunnel start will retry)\n", err)
 	}
 }

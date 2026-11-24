@@ -38,9 +38,9 @@ Write-Host ""
 Write-Host "[3/5] Building SamCDP..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 Push-Location $tmpDir
-go build -ldflags "-H windowsgui" -o "$InstallDir\cdpclient.exe" . 2>&1
+go build -ldflags "-H windowsgui" -o "$InstallDir\samcdp.exe" . 2>&1
 Pop-Location
-Write-Host "  Built: $InstallDir\cdpclient.exe" -ForegroundColor Green
+Write-Host "  Built: $InstallDir\samcdp.exe" -ForegroundColor Green
 
 # 4. Download aitun-client
 Write-Host ""
@@ -93,10 +93,10 @@ Write-Host "=======================================" -ForegroundColor Green
 Write-Host " SamCDP installed successfully!" -ForegroundColor Green
 Write-Host "=======================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Binary:  $InstallDir\cdpclient.exe" -ForegroundColor White
+Write-Host "Binary:  $InstallDir\samcdp.exe" -ForegroundColor White
 Write-Host "Config:  $configPath" -ForegroundColor White
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Edit config.json and add your aitun key" -ForegroundColor White
-Write-Host "  2. Run: $InstallDir\cdpclient.exe" -ForegroundColor White
+Write-Host "  2. Run: $InstallDir\samcdp.exe" -ForegroundColor White
 Write-Host ""

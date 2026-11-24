@@ -11,7 +11,7 @@ import (
 
 const (
 	winRegistryKey = `Software\Microsoft\Windows\CurrentVersion\Run`
-	winAppName     = "cdpclient"
+	winAppName     = "samcdp"
 )
 
 // IsAutoStartEnabled 检查是否已设置开机启动
@@ -60,7 +60,7 @@ func DisableAutoStart() error {
 
 func launchAgentPath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, "Library", "LaunchAgents", "com.cdpclient.plist")
+	return filepath.Join(home, "Library", "LaunchAgents", "com.samcdp.plist")
 }
 
 func macIsAutoStartEnabled() (bool, error) {
@@ -75,7 +75,7 @@ func macEnableAutoStart() error {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.cdpclient</string>
+    <string>com.samcdp</string>
     <key>ProgramArguments</key>
     <array>
         <string>%s</string>
@@ -97,7 +97,7 @@ func macDisableAutoStart() error {
 
 func systemdServicePath() string {
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "systemd", "user", "cdpclient.service")
+	return filepath.Join(home, ".config", "systemd", "user", "samcdp.service")
 }
 
 func linuxIsAutoStartEnabled() (bool, error) {
